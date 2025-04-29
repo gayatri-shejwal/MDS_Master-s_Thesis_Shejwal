@@ -1,0 +1,107 @@
+---
+title: "conjoint_data_cleaning_draft"
+author: "Gayatri Shejwal"
+date: "2025-04-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# R Cleaning Code for Conjoint Analysis Survey Data
+
+# Install required packages if not already installed
+if (!require(tidyverse)) install.packages("tidyverse")
+if (!require(janitor)) install.packages("janitor")
+if (!require(stringr)) install.packages("stringr")
+
+# Load packages
+library(tidyverse)
+library(janitor)
+library(stringr)
+
+# Step 1: Load your data (replace the path with your real dataset)
+# dummy_data <- read_csv("path_to_your_real_data.csv")
+
+# Using the dummy dataset you generated
+dummy_data <- dummy_df
+
+# Step 2: Filter finished surveys
+clean_data <- dummy_data %>%
+  filter(Finished == 1)
+
+# Step 3: Pivot choice columns into long format
+choice_cols <- names(clean_data)[str_detect(names(clean_data), "choice")]
+
+long_data <- clean_data %>%
+  pivot_longer(
+    cols = all_of(choice_cols),
+    names_to = "task",
+    values_to = "choice"
+  )
+
+# Step 4: Extract framing, role, and task number from 'task' column
+long_data <- long_data %>%
+  mutate(
+    ai_framing = case_when(str_detect(task, "low_ai") ~ "Low AI",
+                           str_detect(task, "high_ai") ~ "High AI"),
+    job_role = case_when(str_detect(task, "gen") ~ "Generalist",
+                         str_detect(task, "sp") ~ "Specialist"),
+    task_number = str_extract(task, "\\d+")
+  )
+
+# Step 5: Merge candidate traits (split embedded data fields)
+# Note: For simplicity, here we'll focus on just traits1a_xxx and traits1b_xxx types for the example
+# In real data, you need to match traits per task dynamically
+long_data <- long_data %>%
+  mutate(
+    traits_a = NA,
+    traits_b = NA
+  )
+
+# Dynamic assignment (pseudocode to generalize)
+for (framing in c("low_ai_gen", "low_ai_sp", "high_ai_gen", "high_ai_sp")) {
+  for (i in 1:5) {
+    a_col <- paste0("traits", i, "a_", framing)
+    b_col <- paste0("traits", i, "b_", framing)
+    task_pattern <- paste0(framing, "_choice_", i)
+    long_data <- long_data %>%
+      mutate(
+        traits_a = if_else(task == task_pattern, .data[[a_col]], traits_a),
+        traits_b = if_else(task == task_pattern, .data[[b_col]], traits_b)
+      )
+  }
+}
+
+# Step 6: Expand candidate traits into individual attribute columns
+expand_traits <- function(trait_string) {
+  str_split(trait_string, "\\|") %>%
+    map_chr(~ paste(., collapse = ", "))
+}
+
+long_data <- long_data %>%
+  separate(traits_a, into = c("cand_a_age", "cand_a_education", "cand_a_ml", "cand_a_prog", "cand_a_soft", "cand_a_lead"), sep = "\\|") %>%
+  separate(traits_b, into = c("cand_b_age", "cand_b_education", "cand_b_ml", "cand_b_prog", "cand_b_soft", "cand_b_lead"), sep = "\\|")
+
+# Step 7: Recode outcome variable (choice)
+long_data <- long_data %>%
+  mutate(
+    choice = if_else(choice == "A", 1, 0)
+  )
+
+# Step 8: Final clean dataset
+final_clean_data <- long_data %>%
+  select(
+    ResponseId, task_number, ai_framing, job_role, 
+    starts_with("cand_a"), starts_with("cand_b"),
+    choice
+  )
+
+# Display final cleaned dataset
+print("Final Cleaned Data")
+head(final_clean_data)
+```
+
+
