@@ -21,16 +21,75 @@ if (!require(stringr)) install.packages("stringr")
 library(tidyverse)
 library(janitor)
 library(stringr)
+library(readxl)
 
 # Step 1: Load your data (replace the path with your real dataset)
 # dummy_data <- read_csv("path_to_your_real_data.csv")
 
 # Using the dummy dataset you generated
-dummy_data <- dummy_df
+dummy_data <- read_excel("data/test_data_1.xlsx")
 
-# Step 2: Filter finished surveys
-clean_data <- dummy_data %>%
-  filter(Finished == 1)
+cleaned_dummy <- dummy_data[-c(1),]
+
+cleaned_dummy <- cleaned_dummy |>
+  mutate(Duration = as.numeric(Duration),
+         Duration_mins = Duration/60) |>
+  select(-c(StartDate,
+            EndDate,
+            ResponseId,
+            Status,
+            IPAddress,
+            RecipientLastName,
+            RecipientFirstName,
+            RecipientEmail,
+            ExternalReference,
+            DistributionChannel,
+            UserLanguage,
+            `t_prolific_id_First Click`,
+            `t_prolific_id_Last Click`,
+            `t_prolific_id_Page Submit`,
+            `t_prolific_id_Click Count`,
+            low_ai_gen_text,
+            low_ai_sp_text,
+            high_ai_gen_text,
+            high_ai_sp_text,
+            seed1_low_gen:seed5_low_gen,
+            seed1_low_sp:seed5_low_sp,
+            seed1_high_gen:seed5_high_gen,
+            seed1_high_sp:seed5_high_sp,
+            attrs1_low_gen, attrs2_low_gen, attrs3_low_gen, attrs4_low_gen, attrs5_low_gen,
+            attrs1_low_sp, attrs2_low_sp, attrs3_low_sp, attrs4_low_sp, attrs5_low_sp,
+            attrs1_high_gen, attrs2_high_gen, attrs3_high_gen, attrs4_high_gen, attrs5_high_gen,
+            attrs1_high_sp, attrs2_high_sp, attrs3_high_sp, attrs4_high_sp, attrs5_high_sp))
+  
+  
+#select(-c("Start Date", "End Date", "Response Type", "IP Address", "Recipient Last Name", "Recipient First Name", "Recipient Email", "External Data Reference", "Distribution Channel", "User Language", "Timing - First Click", "Timing - Last Click", "Timing - Page Submit", "Timing - Click Count"))
+
+# Filter for each condition
+low_ai_gen <- cleaned_dummy |>
+  filter(ai_framing == "low",
+         job_role == "manager") |>
+  select(-c(low_ai_sp_choice_1:low_ai_sp_choice_5,
+            traits1a_low_sp:traits5b_low_sp,
+            high_ai_gen_choice_1:high_ai_gen_choice_5,
+            traits1a_high_gen:traits5b_high_gen,
+            high_ai_sp_choice_1:high_ai_sp_choice_5,
+            traits1a_high_sp:traits5b_high_sp))
+
+low_ai_sp <- cleaned_dummy |>
+  filter(ai_framing == "low",
+         job_role == "analyst")
+
+high_ai_gen <- cleaned_dummy |>
+  filter(ai_framing == "high",
+         job_role == "manager")
+
+high_ai_sp <- cleaned_dummy |>
+  filter(ai_framing == "high",
+         job_role == "analyst")
+
+
+
 
 # Step 3: Pivot choice columns into long format
 choice_cols <- names(clean_data)[str_detect(names(clean_data), "choice")]
