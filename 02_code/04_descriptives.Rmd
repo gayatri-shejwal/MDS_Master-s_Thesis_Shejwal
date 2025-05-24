@@ -1,0 +1,88 @@
+---
+title: "04_descriptives"
+author: "Gayatri Shejwal"
+date: "2025-05-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+detach("package:plyr", unload = TRUE)
+
+```
+
+
+```{r}
+
+# long_survey_df <- read.csv("../01_data/02_processed_data/long_survey_df.csv")
+
+combined_df <- read.csv("../01_data/02_processed_data/combined_df.csv")
+
+```
+
+
+
+```{r}
+
+# Descriptives:
+
+country_df <- combined_df |>
+  group_by(Country.of.residence, resp_age, resp_sex, Region) |>
+  summarise(count = n(), .groups = 'drop')
+
+country_plot_1 <- ggplot(country_df, aes(y = Country.of.residence, x = sort(count), fill = resp_sex)) +
+  geom_bar(position="dodge", stat="identity") +
+  scale_fill_brewer(palette = "GnBu") +
+  theme_minimal()
+country_plot_1
+
+country_plot_2 <- ggplot(country_df, aes(y = Country.of.residence, x = sort(count), fill = resp_age)) +
+  geom_bar(position="fill", stat="identity") +
+  scale_fill_brewer(palette = "GnBu") +
+  theme_minimal()
+country_plot_2
+
+```
+
+
+
+```{r}
+
+# Policy Preferences:
+
+Likert_columns <- combined_df |>
+  select(gov_reg:more_ai_research_and_development) |>
+  names()
+
+# Convert columns to factors with explicit levels
+combined_df[, Likert_columns] <- lapply(combined_df[, Likert_columns], factor, 
+                                 levels = c("Strongly agree",
+                                            "Agree",
+                                            "Neutral",
+                                            "Disagree",
+                                            "Strongly disagree"))
+#install.packages("likert")
+#install.packages("plyr")
+library(likert)
+library(plyr)
+likert_data <- likert(items = combined_df[, Likert_columns],
+                      grouping = combined_df$policy_group)
+plot(likert_data) + 
+  ggtitle("Policy Preferences by Group")
+
+plot(likert_data, plot.percents = TRUE, 
+     colors = RColorBrewer::brewer.pal(5, "RdBu"))
+
+plot(likert_data, wrap = 60, legend.position = "bottom")
+
+
+#ggstats::gglikert()
+
+
+
+```
+
+
+

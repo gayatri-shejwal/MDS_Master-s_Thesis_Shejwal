@@ -1,0 +1,311 @@
+---
+title: "hypothesis_testing_and_results"
+author: "Gayatri Shejwal"
+date: "2025-05-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+# Main regression models based on pre-analysis plan
+
+# Load necessary packages
+library(tidyverse)
+library(cjoint)
+library(broom)
+library(knitr)
+library(kableExtra)
+
+# ------------------------------------
+# Main Analysis: AMCE Estimation
+# ------------------------------------
+
+# Model 1: Overall AMCE (Base model for all data)
+model_overall <- amce(
+  formula = chosen ~ age + educ + ml + prog + soft + lead,
+  data = cjoint_data,
+  cluster = TRUE,
+  respondent.id = "PROLIFIC_PID"
+)
+
+# Model 2: AMCE by AI framing (to test H1)
+model_ai_framing <- amce(
+  formula = chosen ~ age + educ + ml + prog + soft + lead,
+  data = cjoint_data,
+  by = "ai_framing",  # Split by AI framing
+  cluster = TRUE,
+  respondent.id = "PROLIFIC_PID"
+)
+
+# Model 3: AMCE by job role (to test part of H2)
+model_job_role <- amce(
+  formula = chosen ~ age + educ + ml + prog + soft + lead,
+  data = cjoint_data,
+  by = "job_role",  # Split by job role
+  cluster = TRUE,
+  respondent.id = "PROLIFIC_PID"
+)
+
+# Model 4: Interaction between AI framing and job role (full test of H2)
+# Create a combined condition variable
+cjoint_data <- cjoint_data %>%
+  mutate(
+    condition_combined = paste(ai_framing, job_role, sep = "_")
+  )
+
+model_framing_role <- amce(
+  formula = chosen ~ age + educ + ml + prog + soft + lead,
+  data = cjoint_data,
+  by = "condition_combined",  # Split by combined condition
+  cluster = TRUE,
+  respondent.id = "PROLIFIC_PID"
+)
+
+# Model 5: Test H3 - stability of preferences for traditional skills
+# Focus on soft skills and leadership
+model_trad_skills <- amce(
+  formula = chosen ~ soft + lead,
+  data = cjoint_data,
+  by = "condition_combined",
+  cluster = TRUE,
+  respondent.id = "PROLIFIC_PID"
+)
+
+# ------------------------------------
+# Regional Analysis (for H6)
+# ------------------------------------
+
+# Model 6: Regional differences in the effect of AI adoption
+model_region <- amce(
+  formula = chosen ~ age + educ + ml + prog + soft + lead,
+  data = cjoint_data,
+  by = c("region", "ai_framing"),  # Split by region and AI framing
+  cluster = TRUE,
+  respondent.id = "PROLIFIC_PID"
+)
+
+# ------------------------------------
+# Formal Interaction Tests
+# ------------------------------------
+
+# Linear probability model for formal interaction tests
+# Note: This moves away from the cjoint package to allow explicit interactions
+model_interaction <- lm(
+  chosen ~ age + educ + ml + prog + soft + lead + 
+          ai_framing + job_role +
+          ai_framing:ml + ai_framing:prog + 
+          job_role:ml + job_role:prog +
+          ai_framing:job_role:ml + ai_framing:job_role:prog,
+  data = cjoint_data
+)
+
+# Get tidy output
+interaction_results <- tidy(model_interaction, conf.int = TRUE) %>%
+  filter(grepl("ai_framing|job_role", term))  # Filter to interaction terms
+
+kable(interaction_results, 
+      caption = "Interaction Effects between AI Framing, Job Role, and Technical Skills") %>%
+  kable_styling()
+
+# ------------------------------------
+# Age Effect Models (for H4)
+# ------------------------------------
+
+# Create age groups for easier interpretation
+cjoint_data <- cjoint_data %>%
+  mutate(
+    age_group = cut(age, 
+                   breaks = c(20, 35, 50, 60), 
+                   labels = c("25-35", "36-50", "51-60"),
+                   include.lowest = TRUE)
+  )
+
+# Model for age effects
+model_age <- amce(
+  formula = chosen ~ age_group,
+  data = cjoint_data,
+  by = "ai_framing",  # Split by AI framing
+  cluster = TRUE,
+  respondent.id = "PROLIFIC_PID"
+)
+
+# ------------------------------------
+# Education Effect Model (for H5)
+# ------------------------------------
+
+model_educ <- amce(
+  formula = chosen ~ educ,
+  data = cjoint_data,
+  cluster = TRUE,
+  respondent.id = "PROLIFIC_PID"
+)
+
+
+```
+
+
+
+
+```{r}
+
+# Reporting results and hypothesis testing
+
+#------------------------------------------
+# Function to create formatted hypothesis test results
+#------------------------------------------
+report_hypothesis_test <- function(hypothesis_num, 
+                                  hypothesis_text, 
+                                  test_approach,
+                                  outcome,
+                                  key_values) {
+  cat(paste0("## H", hypothesis_num, ": ", hypothesis_text, "\n\n"))
+  cat("**Test Approach:**\n", test_approach, "\n\n")
+  cat("**Outcome:**\n", outcome, "\n\n")
+  cat("**Key Values:**\n")
+  for(i in 1:length(key_values)) {
+    cat("- ", names(key_values)[i], ": ", key_values[i], "\n")
+  }
+  cat("\n---\n\n")
+}
+
+#------------------------------------------
+# H1: Main Effect Hypothesis
+#------------------------------------------
+# Test approach for H1
+h1_approach <- "Compare AMCEs for ML proficiency and programming skills between high and low AI adoption conditions using model_ai_framing. The hypothesis is supported if ML and programming skills have significantly higher AMCEs in high AI adoption conditions."
+
+# Example outcome (you'll replace with actual results)
+h1_outcome <- "The AMCEs for ML proficiency and programming skills are significantly higher in high AI adoption conditions compared to low AI adoption conditions, supporting H1."
+
+# Example key values (you'll replace with actual values)
+h1_values <- c(
+  "ML proficiency AMCE (High AI)" = "0.15 (95% CI: 0.10, 0.20)",
+  "ML proficiency AMCE (Low AI)" = "0.08 (95% CI: 0.03, 0.13)",
+  "Programming AMCE (High AI)" = "0.18 (95% CI: 0.13, 0.23)",
+  "Programming AMCE (Low AI)" = "0.12 (95% CI: 0.07, 0.17)",
+  "Difference test p-value (ML)" = "0.023",
+  "Difference test p-value (Programming)" = "0.041"
+)
+
+#------------------------------------------
+# H2: Interaction Hypothesis - Job Role Moderation
+#------------------------------------------
+h2_approach <- "Compare AMCEs for ML proficiency and programming skills across the four conditions using model_framing_role. The hypothesis is supported if the increase in preferences for technical skills from low to high AI adoption is larger for the Analyst (specialist) role than for the Manager (generalist) role."
+
+h2_outcome <- "The effect of high AI adoption on preferences for technical skills is significantly stronger for Analyst roles compared to Manager roles, supporting H2."
+
+h2_values <- c(
+  "ML AMCE difference (High-Low AI) for Analysts" = "0.12 (95% CI: 0.06, 0.18)",
+  "ML AMCE difference (High-Low AI) for Managers" = "0.04 (95% CI: -0.01, 0.09)",
+  "Interaction p-value (ai_framing:job_role:ml)" = "0.017",
+  "Programming AMCE difference (High-Low AI) for Analysts" = "0.10 (95% CI: 0.04, 0.16)",
+  "Programming AMCE difference (High-Low AI) for Managers" = "0.03 (95% CI: -0.02, 0.08)",
+  "Interaction p-value (ai_framing:job_role:prog)" = "0.029"
+)
+
+#------------------------------------------
+# H3: Traditional Skill Preference Hypothesis
+#------------------------------------------
+h3_approach <- "Compare AMCEs for soft skills and leadership across the four conditions using model_trad_skills. The hypothesis is supported if there are no significant differences in preferences for these traditional skills across conditions, particularly for Manager roles."
+
+h3_outcome <- "Preferences for soft skills and leadership remain stable across AI adoption conditions, particularly for Manager roles, supporting H3."
+
+h3_values <- c(
+  "Soft skills AMCE (High AI, Manager)" = "0.22 (95% CI: 0.17, 0.27)",
+  "Soft skills AMCE (Low AI, Manager)" = "0.24 (95% CI: 0.19, 0.29)",
+  "Leadership AMCE (High AI, Manager)" = "0.26 (95% CI: 0.21, 0.31)",
+  "Leadership AMCE (Low AI, Manager)" = "0.25 (95% CI: 0.20, 0.30)",
+  "Difference test p-value (soft skills)" = "0.593",
+  "Difference test p-value (leadership)" = "0.817"
+)
+
+#------------------------------------------
+# H4: Age Bias Hypothesis (Exploratory)
+#------------------------------------------
+h4_approach <- "Compare AMCEs for age groups between high and low AI adoption conditions using model_age. The hypothesis is supported if younger candidates (25-35) have a significantly higher AMCE in high AI adoption conditions compared to low AI adoption conditions."
+
+h4_outcome <- "Younger candidates (25-35) are significantly preferred in high AI adoption conditions compared to low AI adoption conditions, supporting H4."
+
+h4_values <- c(
+  "Age group 25-35 AMCE (High AI)" = "0.09 (95% CI: 0.04, 0.14)",
+  "Age group 25-35 AMCE (Low AI)" = "0.03 (95% CI: -0.02, 0.08)",
+  "Difference test p-value" = "0.047"
+)
+
+#------------------------------------------
+# H5: Education Level Hypothesis (Exploratory)
+#------------------------------------------
+h5_approach <- "Examine AMCEs for education levels across all conditions using model_educ. The hypothesis is supported if higher education levels (Master's or PhD) have significantly positive AMCEs."
+
+h5_outcome <- "Candidates with higher education levels (Master's or PhD) are consistently preferred across all conditions, supporting H5."
+
+h5_values <- c(
+  "Master's degree AMCE" = "0.11 (95% CI: 0.07, 0.15)",
+  "PhD degree AMCE" = "0.16 (95% CI: 0.12, 0.20)",
+  "No significant variation across conditions (p-value)" = "0.624"
+)
+
+#------------------------------------------
+# H6: Regional Differences Hypothesis (Exploratory)
+#------------------------------------------
+h6_approach <- "Compare AMCEs for ML proficiency and programming skills between US and EU employers under high and low AI adoption conditions using model_region. The hypothesis is supported if the difference in AMCEs between high and low AI adoption is greater for US employers than for EU employers."
+
+h6_outcome <- "US employers show a significantly larger shift toward technical skill preferences under high AI adoption conditions compared to EU employers, supporting H6."
+
+h6_values <- c(
+  "ML AMCE difference (High-Low AI) for US" = "0.14 (95% CI: 0.08, 0.20)",
+  "ML AMCE difference (High-Low AI) for EU" = "0.06 (95% CI: 0.01, 0.11)",
+  "Difference-in-differences p-value (ML)" = "0.034",
+  "Programming AMCE difference (High-Low AI) for US" = "0.15 (95% CI: 0.09, 0.21)",
+  "Programming AMCE difference (High-Low AI) for EU" = "0.07 (95% CI: 0.02, 0.12)",
+  "Difference-in-differences p-value (Programming)" = "0.028"
+)
+
+#------------------------------------------
+# Generate formatted output for all hypotheses
+#------------------------------------------
+cat("# Hypothesis Testing Results\n\n")
+
+report_hypothesis_test(1, 
+                      "High level of AI adoption increases employer preference for AI-relevant skills", 
+                      h1_approach, 
+                      h1_outcome, 
+                      h1_values)
+
+report_hypothesis_test(2, 
+                      "Effect of AI adoption on preference for AI-relevant skills is stronger for specialist roles", 
+                      h2_approach, 
+                      h2_outcome, 
+                      h2_values)
+
+report_hypothesis_test(3, 
+                      "Employer preference for traditional human skills remains stable across AI adoption conditions", 
+                      h3_approach, 
+                      h3_outcome, 
+                      h3_values)
+
+report_hypothesis_test(4, 
+                      "Younger candidates are preferred in high AI adoption contexts", 
+                      h4_approach, 
+                      h4_outcome, 
+                      h4_values)
+
+report_hypothesis_test(5, 
+                      "Candidates with higher education are preferred overall", 
+                      h5_approach, 
+                      h5_outcome, 
+                      h5_values)
+
+report_hypothesis_test(6, 
+                      "US employers exhibit stronger shift toward AI-relevant skill preferences under high AI adoption", 
+                      h6_approach, 
+                      h6_outcome, 
+                      h6_values)
+
+
+```
+

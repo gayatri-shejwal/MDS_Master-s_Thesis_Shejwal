@@ -1,0 +1,560 @@
+---
+title: "02_conjoint_analysis"
+author: "Gayatri Shejwal"
+date: "2025-05-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r}
+
+# Load packages
+library(doParallel)
+library(foreach)
+library(haven)
+library(patchwork)
+library(sandwich)
+library(sjlabelled)
+library(stringr)
+library(tidyverse)
+library(rJava)
+#install.packages("xlsx")
+library(xlsx)
+
+library(janitor)
+library(stringr)
+library(readxl)
+library(cjoint)  
+library(cregg)
+library(broom)
+
+source("../03_functions/conjacp.R") ### Function that calculates ACPs
+source("../03_functions/FunctionVCOVCluster.R") ### Function that calculates clustered SEs
+source("../03_functions/FunctionTableGraph.R") ### Function that prepare the data frame for result graphs
+source("../03_functions/theme_graph.R")
+
+extrafont::loadfonts()
+cbPalette <- c("#E69F00", "#009E73", "#0072B2", "#D55E00", "#CC79A7", "#999999", "#56B4E9", "#F0E442")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+long_conjoint_df <- read.csv("../01_data/02_processed_data/long_conjoint_df.csv")
+
+long_conjoint_df <- long_conjoint_df |>
+  mutate(chosen = as.numeric(chosen),
+         age_group = as.factor(age_group),
+         educ = as.factor(educ),
+         ml = as.factor(paste0("ml_", ml)),
+         prog = as.factor(paste0("prog_", prog)),
+         soft = as.factor(paste0("soft_", soft)),
+         lead = as.factor(paste0("lead_", lead)),
+         ai_framing = as.factor(ai_framing),
+         job_role = as.factor(job_role))
+
+# Get attribute levels and relevel
+levels(long_subset_df$age_group) = c("21-30", "31-40", "41-50", "51-60")
+levels(long_subset_df$educ) = c("Bachelor's", "Master's", "PhD")
+levels(long_subset_df$ml) = c("ml_None", "ml_Basic", 
+                                   "ml_Intermediate", "ml_Advanced")
+levels(long_subset_df$prog) = c("prog_None", "prog_Basic", 
+                                   "prog_Intermediate", "prog_Advanced")
+levels(long_subset_df$soft) = c("soft_Low", "soft_Medium", "soft_High")
+levels(long_subset_df$lead) = c("lead_Low", "lead_Medium", "lead_High")
+levels(long_subset_df$ai_framing) = c("Low", "High")
+levels(long_subset_df$job_role) = c("Manager", "Analyst")
+
+
+```
+
+```{r}
+conjacp_data_cjoint <- conjacp.prepdata(
+  chosen ~ age_group + educ + ml*prog + soft + lead,
+  data = long_subset_df,
+  tasks = "task_fg",
+  subgroups = "ai_framing",
+  id = "RespID"
+)
+
+results_acp_model <- conjacp.estimation(conjacp_data_cjoint, estimand = "acp", adjust = FALSE)
+
+#plot(results_acp_model)
+
+```
+
+
+```{r}
+# AMCEs
+  
+# Create empty vectors to store results
+ind_estimate_c <- NULL
+ind_se_c       <- NULL
+  
+# Loop over independently randomized attributes
+for (attribute in c("age_group", "educ", "ml", "prog", "soft", "lead")) {
+    
+    # Create data frame for model
+    data_model_c <- long_subset_df[, c(attribute, "chosen")]
+    names(data_model_c)[-ncol(data_model_c)] <- paste0(names(data_model_c)[-ncol(data_model_c)], ".")
+    
+    # Estimate model
+    model_c <- lm(chosen ~ ., data = data_model_c)
+    
+    # Store estimates
+    ind_estimate_c <- c(ind_estimate_c, coef(model_c)[-1])
+    vcov_c         <- vcovCluster(model_c, long_subset_df$RespID)
+    ind_se_c       <- c(ind_se_c, sqrt(diag(vcov_c))[-1])
+    }
+
+```
+
+
+```{r}
+results_cj <- cj(
+  data = long_subset_df,
+  formula = chosen ~ age_group + educ + soft + lead + ml * prog,
+  id = ~RespID
+)
+
+
+plot(results_cj, title = "AMCEs with ML × Programming Interaction")
+
+
+```
+
+```{r}
+## Graph ACPs vs. AMCEs
+    
+# Prepare estimate table
+#table_acpamce_c <- data.frame(
+  
+  modality <- c("Age Groups:",
+                "21-30", "31-40",
+                "41-50", "51-60", 
+                "",
+                "Education Level:",
+                "Bachelor's",
+                "Master's",
+                "PhD", 
+                " ",
+                "AI/ML Proficiency:",
+                "ml_None",
+                "ml_Basic",
+                "ml_Intermediate",
+                "ml_Advanced", 
+                "   ",
+                "Programming:",
+                "prog_None",
+                "prog_Basic",
+                "prog_Intermediate",
+                "prog_Advanced",
+                "    ",
+                "Soft Skills:",
+                "soft_Low",
+                "soft_Medium",
+                "soft_High",
+                "     ",
+                "Leadership/Decision Making:",
+                "lead_Low",
+                "lead_Medium",
+                "lead_High")
+
+
+  var = c("", rep("Age Group", 4), "",
+          "", rep("Education Level", 3), "",
+          "", rep("AI/ML Proficiency", 4), "",
+          "", rep("Programming", 4), "",
+          "", rep("Soft Skills", 3), "",
+          "", rep("Leadership/Decision Making", 3))
+  
+  estimate_acp = c(NA, results_acp_model$estimates[1:4], NA,
+                   NA, results_acp_model$estimates[5:7], NA,
+                   NA, results_acp_model$estimates[8:11], NA,
+                   NA, results_acp_model$estimates[12:15], NA,
+                   NA, results_acp_model$estimates[16:18], NA,
+                   NA, results_acp_model$estimates[19:21])
+  
+  estimate_amce = c(NA, NA, ind_estimate_c[1:3], NA,
+                    NA, NA, ind_estimate_c[4:5], NA,
+                    NA, NA, ind_estimate_c[6:8], NA,
+                    NA, NA, ind_estimate_c[9:11], NA,
+                    NA, NA, ind_estimate_c[12:13], NA,
+                    NA, NA, ind_estimate_c[14:15])
+  
+  se_acp = c(0, sqrt(diag(results_acp_model$vcov))[1:4],
+             0, 0, sqrt(diag(results_acp_model$vcov))[5:7],
+             0, 0, sqrt(diag(results_acp_model$vcov))[8:11],
+             0, 0, sqrt(diag(results_acp_model$vcov))[12:15],
+             0, 0, sqrt(diag(results_acp_model$vcov))[16:18],
+             0, 0, sqrt(diag(results_acp_model$vcov))[19:21])
+  
+  se_amce = c(0, NA, ind_se_c[1:3], 0,
+              0, NA, ind_se_c[4:5], 0,
+              0, NA, ind_se_c[6:8], 0,
+              0, NA, ind_se_c[9:11], 0,
+              0, NA, ind_se_c[12:13], 0,
+              0, NA, ind_se_c[14:15])
+  
+  type = c(rep("ACP", length(modality)), rep("AMCE", length(modality)))
+  
+#table_acpamce_c <- data.frame(modality, var, estimate, se, type)
+  
+table_acpamce_c <- data.frame(
+  modality = rep(modality, 2),
+  var      = rep(var, 2),
+  estimate = c(estimate_acp, estimate_amce),
+  se       = c(se_acp, se_amce),
+  type     = c(rep("ACP", length(modality)), rep("AMCE", length(modality)))
+)
+
+table_acpamce_c$modality <- factor(table_acpamce_c$modality, levels = rev(unique(table_acpamce_c$modality)))
+
+hline <- data.frame(type = c("AMCE", "ACP"), yint = c(0, 0))
+
+# Plot graphs
+commplot_c <- ggplot(table_acpamce_c, aes(y = estimate, x = modality, group = type)) +
+  coord_flip(ylim = c(-.22, .2)) +
+  geom_hline(data = hline, aes(yintercept = yint), size = .1, colour = "black") +
+  geom_pointrange(aes(ymin = estimate - 1.96 * se, ymax = estimate + 1.96 * se,
+                      color = type, shape = type, fill = type),
+                  position = position_dodge(width = .5), size = .2) +
+  labs(y = "", x = "") +
+  facet_grid(. ~ type) +
+  theme_fg(base_size = 11) +
+  theme(panel.grid.minor = element_blank(),
+        axis.text.y = element_text(hjust = 0 , vjust = .5 ),
+        legend.position = "none")  +
+  scale_shape_manual(values = c(21, 22, 23, 23), name = "") +
+  scale_fill_manual(values = cbPalette, name = "") +
+  scale_colour_manual(values = cbPalette, name = "")
+
+ggsave(commplot_c, filename = "../04_plots/acpamce_comm_c.pdf",
+       height = 6, width = 10, device = cairo_pdf)
+
+print(commplot_c)
+```
+
+```{r}
+
+# Assuming results_acp_model is your ACP output
+print(results_acp_model$estimates)
+print(sqrt(diag(results_acp_model$vcov_c))) # Standard errors
+
+
+
+```
+
+```{r}
+
+## Variation within each job role:
+
+# Subset by job role
+manager_data <- subset(long_subset_df, job_role == "Manager")
+
+# Estimate ACPs separately
+conjacp_data_manager <- conjacp.prepdata(
+  chosen ~ age_group + educ + ml + prog + soft + lead,
+  data = manager_data,
+  tasks = "task_fg",
+  subgroups = "ai_framing",
+  id = "RespID"
+)
+
+results_acp_model_manager <- conjacp.estimation(conjacp_data_manager, estimand = "acp", adjust = FALSE)
+
+
+##--------------------------------------------------------------------------##
+
+# AMCEs
+  
+# Create empty vectors to store results
+ind_estimate_manager <- NULL
+ind_se_manager       <- NULL
+  
+# Loop over independently randomized attributes
+for (attribute in c("age_group", "educ", "ml", "prog", "soft", "lead")) {
+    
+    # Create data frame for model
+    data_model_manager <- long_subset_df[, c(attribute, "chosen")]
+    names(data_model_manager)[-ncol(data_model_manager)] <- paste0(names(data_model_manager)[-ncol(data_model_manager)], ".")
+    
+    # Estimate model
+    model_manager <- lm(chosen ~ ., data = data_model_manager)
+    
+    # Store estimates
+    ind_estimate_manager <- c(ind_estimate_manager, coef(model_manager)[-1])
+    vcov_manager         <- vcovCluster(model_manager, long_subset_df$RespID)
+    ind_se_manager       <- c(ind_se_manager, sqrt(diag(vcov_manager))[-1])
+}
+
+```
+
+```{r}
+
+manager_data$ml_prog <- interaction(manager_data$ml, manager_data$prog)
+
+
+results_manager <- cj(
+  data = manager_data,
+  formula = chosen ~ age_group + educ + soft + lead + ml_prog,
+  id = ~RespID
+)
+
+
+plot(results_manager, title = "AMCEs with ML × Programming Interaction")
+print(results_manager)
+```
+
+
+
+```{r}
+
+## Graph ACPs vs. AMCEs
+    
+# Prepare estimate table
+#table_acpamce_c <- data.frame(
+
+  
+  estimate_acp_manager = c(NA, results_acp_model_manager$estimates[1:4], NA,
+                   NA, results_acp_model_manager$estimates[5:7], NA,
+                   NA, results_acp_model_manager$estimates[8:11], NA,
+                   NA, results_acp_model_manager$estimates[12:15], NA,
+                   NA, results_acp_model_manager$estimates[16:18], NA,
+                   NA, results_acp_model_manager$estimates[19:21])
+  
+  estimate_amce_manager = c(NA, NA, ind_estimate_manager[1:3], NA,
+                    NA, NA, ind_estimate_manager[4:5], NA,
+                    NA, NA, ind_estimate_manager[6:8], NA,
+                    NA, NA, ind_estimate_manager[9:11], NA,
+                    NA, NA, ind_estimate_manager[12:13], NA,
+                    NA, NA, ind_estimate_manager[14:15])
+  
+  se_acp_manager = c(0, sqrt(diag(results_acp_model_manager$vcov))[1:4],
+             0, 0, sqrt(diag(results_acp_model_manager$vcov))[5:7],
+             0, 0, sqrt(diag(results_acp_model_manager$vcov))[8:11],
+             0, 0, sqrt(diag(results_acp_model_manager$vcov))[12:15],
+             0, 0, sqrt(diag(results_acp_model_manager$vcov))[16:18],
+             0, 0, sqrt(diag(results_acp_model_manager$vcov))[19:21])
+  
+  se_amce_manager = c(0, NA, ind_se_manager[1:3], 0,
+              0, NA, ind_se_manager[4:5], 0,
+              0, NA, ind_se_manager[6:8], 0,
+              0, NA, ind_se_manager[9:11], 0,
+              0, NA, ind_se_manager[12:13], 0,
+              0, NA, ind_se_manager[14:15])
+  
+#table_acpamce_c <- data.frame(modality, var, estimate, se, type)
+  
+table_acpamce_manager <- data.frame(
+  modality = rep(modality, 2),
+  var      = rep(var, 2),
+  estimate = c(estimate_acp_manager, estimate_amce_manager),
+  se       = c(se_acp_manager, se_amce_manager),
+  type     = c(rep("ACP", length(modality)), rep("AMCE", length(modality)))
+)
+
+table_acpamce_manager$modality <- factor(table_acpamce_manager$modality, levels = rev(unique(table_acpamce_manager$modality)))
+
+
+# Plot graphs
+commplot_manager <- ggplot(table_acpamce_manager, aes(y = estimate, x = modality, group = type)) +
+  coord_flip(ylim = c(-.22, .2)) +
+  geom_hline(data = hline, aes(yintercept = yint), size = .1, colour = "black") +
+  geom_pointrange(aes(ymin = estimate - 1.96 * se, ymax = estimate + 1.96 * se,
+                      color = type, shape = type, fill = type),
+                  position = position_dodge(width = .5), size = .2) +
+  labs(y = "", x = "") +
+  facet_grid(. ~ type) +
+  theme_fg(base_size = 11) +
+  theme(panel.grid.minor = element_blank(),
+        axis.text.y = element_text(hjust = 0 , vjust = .5 ),
+        legend.position = "none")  +
+  scale_shape_manual(values = c(21, 22, 23, 23), name = "") +
+  scale_fill_manual(values = cbPalette, name = "") +
+  scale_colour_manual(values = cbPalette, name = "")
+
+ggsave(commplot_manager, filename = "../04_plots/acpamce_comm_manager.pdf",
+       height = 6, width = 10, device = cairo_pdf)
+
+print(commplot_manager)
+
+```
+
+
+
+```{r}
+
+analyst_data <- subset(long_subset_df, job_role == "Analyst")
+
+conjacp_data_analyst <- conjacp.prepdata(
+  chosen ~ age_group + educ + ml + prog + soft + lead,
+  data = analyst_data,
+  tasks = "task_fg",
+  subgroups = "ai_framing",
+  id = "RespID"
+)
+ 
+results_acp_model_analyst <- conjacp.estimation(conjacp_data_analyst, estimand = "acp", adjust = FALSE)
+
+##--------------------------------------------------------------------------##
+
+# AMCEs
+  
+# Create empty vectors to store results
+ind_estimate_analyst <- NULL
+ind_se_analyst       <- NULL
+  
+# Loop over independently randomized attributes
+for (attribute in c("age_group", "educ", "ml", "prog", "soft", "lead")) {
+    
+    # Create data frame for model
+    data_model_analyst <- long_subset_df[, c(attribute, "chosen")]
+    names(data_model_analyst)[-ncol(data_model_analyst)] <- paste0(names(data_model_analyst)[-ncol(data_model_analyst)], ".")
+    
+    # Estimate model
+    model_analyst <- lm(chosen ~ ., data = data_model_analyst)
+    
+    # Store estimates
+    ind_estimate_analyst <- c(ind_estimate_analyst, coef(model_analyst)[-1])
+    vcov_analyst         <- vcovCluster(model_analyst, long_subset_df$RespID)
+    ind_se_analyst       <- c(ind_se_analyst, sqrt(diag(vcov_analyst))[-1])
+}
+
+```
+
+```{r}
+results_analyst <- cj(
+  data = analyst_data,
+  formula = chosen ~ age_group + educ + soft + lead + ml * prog,
+  id = ~RespID
+)
+
+
+plot(results_analyst, title = "AMCEs with ML × Programming Interaction")
+
+
+```
+
+
+
+```{r}
+
+## Graph ACPs vs. AMCEs
+    
+# Prepare estimate table
+#table_acpamce_c <- data.frame(
+
+  
+  estimate_acp_analyst = c(NA, results_acp_model_analyst$estimates[1:4], NA,
+                   NA, results_acp_model_analyst$estimates[5:7], NA,
+                   NA, results_acp_model_analyst$estimates[8:11], NA,
+                   NA, results_acp_model_analyst$estimates[12:15], NA,
+                   NA, results_acp_model_analyst$estimates[16:18], NA,
+                   NA, results_acp_model_analyst$estimates[19:21])
+  
+  estimate_amce_analyst = c(NA, NA, ind_estimate_analyst[1:3], NA,
+                    NA, NA, ind_estimate_analyst[4:5], NA,
+                    NA, NA, ind_estimate_analyst[6:8], NA,
+                    NA, NA, ind_estimate_analyst[9:11], NA,
+                    NA, NA, ind_estimate_analyst[12:13], NA,
+                    NA, NA, ind_estimate_analyst[14:15])
+  
+  se_acp_analyst = c(0, sqrt(diag(results_acp_model_analyst$vcov))[1:4],
+             0, 0, sqrt(diag(results_acp_model_analyst$vcov))[5:7],
+             0, 0, sqrt(diag(results_acp_model_analyst$vcov))[8:11],
+             0, 0, sqrt(diag(results_acp_model_analyst$vcov))[12:15],
+             0, 0, sqrt(diag(results_acp_model_analyst$vcov))[16:18],
+             0, 0, sqrt(diag(results_acp_model_analyst$vcov))[19:21])
+  
+  se_amce_analyst = c(0, NA, ind_se_analyst[1:3], 0,
+              0, NA, ind_se_analyst[4:5], 0,
+              0, NA, ind_se_analyst[6:8], 0,
+              0, NA, ind_se_analyst[9:11], 0,
+              0, NA, ind_se_analyst[12:13], 0,
+              0, NA, ind_se_analyst[14:15])
+  
+#table_acpamce_c <- data.frame(modality, var, estimate, se, type)
+  
+table_acpamce_analyst <- data.frame(
+  modality = rep(modality, 2),
+  var      = rep(var, 2),
+  estimate = c(estimate_acp_analyst, estimate_amce_analyst),
+  se       = c(se_acp_analyst, se_amce_analyst),
+  type     = c(rep("ACP", length(modality)), rep("AMCE", length(modality)))
+)
+
+table_acpamce_analyst$modality <- factor(table_acpamce_analyst$modality, levels = rev(unique(table_acpamce_analyst$modality)))
+
+
+# Plot graphs
+commplot_analyst <- ggplot(table_acpamce_analyst, aes(y = estimate, x = modality, group = type)) +
+  coord_flip(ylim = c(-.22, .2)) +
+  geom_hline(data = hline, aes(yintercept = yint), size = .1, colour = "black") +
+  geom_pointrange(aes(ymin = estimate - 1.96 * se, ymax = estimate + 1.96 * se,
+                      color = type, shape = type, fill = type),
+                  position = position_dodge(width = .5), size = .2) +
+  labs(y = "", x = "") +
+  facet_grid(. ~ type) +
+  theme_fg(base_size = 11) +
+  theme(panel.grid.minor = element_blank(),
+        axis.text.y = element_text(hjust = 0 , vjust = .5 ),
+        legend.position = "none")  +
+  scale_shape_manual(values = c(21, 22, 23, 23), name = "") +
+  scale_fill_manual(values = cbPalette, name = "") +
+  scale_colour_manual(values = cbPalette, name = "")
+
+ggsave(commplot_analyst, filename = "../04_plots/acpamce_comm_analyst.pdf",
+       height = 6, width = 10, device = cairo_pdf)
+
+print(commplot_analyst)
+
+```
+
+```{r}
+
+# AI_framing: Low
+
+long_subset_df_low <- subset(long_subset_df, ai_framing == "Low")
+long_subset_df_high <- subset(long_subset_df, ai_framing == "High")
+
+conjacp_data_cjoint_low <- conjacp.prepdata(
+  chosen ~ age_group + educ + ml*prog + soft + lead,
+  data = long_subset_df_low,
+  tasks = "task_fg",
+  #subgroups = "ai_framing",
+  id = "RespID"
+)
+
+results_acp_model_low <- conjacp.estimation(conjacp_data_cjoint_low, estimand = "acp", adjust = FALSE)
+
+
+# AI_framing: High
+conjacp_data_cjoint_high <- conjacp.prepdata(
+  chosen ~ age_group + educ + ml*prog + soft + lead,
+  data = long_subset_df_high,
+  tasks = "task_fg",
+  #subgroups = "ai_framing",
+  id = "RespID"
+)
+
+results_acp_model_high <- conjacp.estimation(conjacp_data_cjoint_high, estimand = "acp", adjust = FALSE)
+
+```

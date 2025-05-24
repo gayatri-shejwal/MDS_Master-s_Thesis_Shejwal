@@ -1,0 +1,1069 @@
+---
+title: "unused_code"
+author: "Gayatri Shejwal"
+date: "2025-05-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+## Unused code:
+
+low_ai_gen_clean <- low_ai_gen |>
+  mutate(traits_chosen_1 = ifelse(low_ai_gen_choice_1 == "Candidate A", traits1a_low_gen, traits1b_low_gen),
+         traits_chosen_2 = ifelse(low_ai_gen_choice_2 == "Candidate A", traits2a_low_gen, traits2b_low_gen),
+         traits_chosen_3 = ifelse(low_ai_gen_choice_3 == "Candidate A", traits3a_low_gen, traits3b_low_gen),
+         traits_chosen_4 = ifelse(low_ai_gen_choice_4 == "Candidate A", traits4a_low_gen, traits4b_low_gen),
+         traits_chosen_5 = ifelse(low_ai_gen_choice_5 == "Candidate A", traits5a_low_gen, traits5b_low_gen)) |>
+  select(-c(traits1a_low_gen:traits5b_low_gen))
+
+low_ai_sp_clean <- low_ai_sp |>
+  mutate(traits_chosen_1 = ifelse(low_ai_sp_choice_1 == "Candidate A", traits1a_low_sp, traits1b_low_sp),
+         traits_chosen_2 = ifelse(low_ai_sp_choice_2 == "Candidate A", traits2a_low_sp, traits2b_low_sp),
+         traits_chosen_3 = ifelse(low_ai_sp_choice_3 == "Candidate A", traits3a_low_sp, traits3b_low_sp),
+         traits_chosen_4 = ifelse(low_ai_sp_choice_4 == "Candidate A", traits4a_low_sp, traits4b_low_sp),
+         traits_chosen_5 = ifelse(low_ai_sp_choice_5 == "Candidate A", traits5a_low_sp, traits5b_low_sp)) |>
+  select(-c(traits1a_low_sp:traits5b_low_sp))
+
+high_ai_gen_clean <- high_ai_gen |>
+  mutate(traits_chosen_1 = ifelse(high_ai_gen_choice_1 == "Candidate A", traits1a_high_gen, traits1b_high_gen),
+         traits_chosen_2 = ifelse(high_ai_gen_choice_2 == "Candidate A", traits2a_high_gen, traits2b_high_gen),
+         traits_chosen_3 = ifelse(high_ai_gen_choice_3 == "Candidate A", traits3a_high_gen, traits3b_high_gen),
+         traits_chosen_4 = ifelse(high_ai_gen_choice_4 == "Candidate A", traits4a_high_gen, traits4b_high_gen),
+         traits_chosen_5 = ifelse(high_ai_gen_choice_5 == "Candidate A", traits5a_high_gen, traits5b_high_gen)) |>
+  select(-c(traits1a_high_gen:traits5b_high_gen))
+
+high_ai_sp_clean <- high_ai_sp |>
+  mutate(traits_chosen_1 = ifelse(high_ai_sp_choice_1 == "Candidate A", traits1a_high_sp, traits1b_high_sp),
+         traits_chosen_2 = ifelse(high_ai_sp_choice_2 == "Candidate A", traits2a_high_sp, traits2b_high_sp),
+         traits_chosen_3 = ifelse(high_ai_sp_choice_3 == "Candidate A", traits3a_high_sp, traits3b_high_sp),
+         traits_chosen_4 = ifelse(high_ai_sp_choice_4 == "Candidate A", traits4a_high_sp, traits4b_high_sp),
+         traits_chosen_5 = ifelse(high_ai_sp_choice_5 == "Candidate A", traits5a_high_sp, traits5b_high_sp)) |>
+  select(-c(traits1a_high_sp:traits5b_high_sp))
+
+```
+
+
+```{r}
+
+# Reshape function
+
+reshape_conjoint_full <- function(df, choice_prefix, traits_prefix, task_count = 5) {
+  all_tasks <- list()
+  
+  for (i in 1:task_count) {
+    
+    col_a <- paste0("traits", i, "a_", traits_prefix)
+    col_b <- paste0("traits", i, "b_", traits_prefix)
+    choice_col <- paste0(choice_prefix, "_choice_", i)
+    
+    task_df <- df %>%
+      select(PROLIFIC_PID, all_of(c(col_a, col_b, choice_col))) %>%
+      rename(
+        traits_A = !!sym(col_a),
+        traits_B = !!sym(col_b),
+        chosen_profile = !!sym(choice_col)
+      )
+    
+    task_a <- task_df %>%
+      transmute(
+        PROLIFIC_PID,
+        task_number = i,
+        profile = "A",
+        chosen = ifelse(chosen_profile == "Candidate A", 1, 0),
+        traits = traits_A
+      )
+    
+    task_b <- task_df %>%
+      transmute(
+        PROLIFIC_PID,
+        task_number = i,
+        profile = "B",
+        chosen = ifelse(chosen_profile == "Candidate B", 1, 0),
+        traits = traits_B
+      )
+    
+    task_long <- bind_rows(task_a, task_b) %>%
+      separate(traits, into = c("age", "educ", "ml", "prog", "soft", "lead"), sep = "\\|") %>%
+      mutate(task_number = as.integer(task_number))
+    
+    all_tasks[[i]] <- task_long
+  }
+  
+  long_df <- bind_rows(all_tasks)
+  
+  # Add respondent metadata
+  meta_cols <- df %>% select(-starts_with("traits"), -matches("_choice_"))
+  long_df <- left_join(long_df, meta_cols, by = "PROLIFIC_PID")
+  
+  return(long_df)
+}
+
+
+
+
+```
+
+
+```{r}
+# Reshape the 4 scenarios:
+
+low_ai_gen_long <- reshape_conjoint_full(df = low_ai_gen, choice_prefix = "low_ai_gen", traits_prefix = "low_gen")
+
+low_ai_sp_long <- reshape_conjoint_full(df = low_ai_sp, choice_prefix = "low_ai_sp", traits_prefix = "low_sp")
+
+high_ai_gen_long <- reshape_conjoint_full(df = high_ai_gen, choice_prefix = "high_ai_gen", traits_prefix = "high_gen")
+
+high_ai_sp_long <- reshape_conjoint_full(df = high_ai_sp, choice_prefix = "high_ai_sp", traits_prefix = "high_sp")
+
+```
+
+
+```{r}
+# Join them all into a single dataframe
+
+long_dummy <- rbind(low_ai_gen_long,
+                    low_ai_sp_long,
+                    high_ai_gen_long,
+                    high_ai_sp_long)
+
+```
+
+
+```{r}
+
+# Estimate AMCEs (Main Effects Model) using the cregg or cjoint package:
+
+long_dummy <- long_dummy |>
+  mutate(
+    educ = factor(educ, levels = c("Bachelor’s", "Master’s", "PhD")),
+    ml = factor(ml, levels = c("None", "Basic", "Intermediate", "Advanced")),
+    prog = factor(prog, levels = c("None", "Basic", "Intermediate", "Advanced")),
+    soft = factor(soft, levels = c("Low", "Medium", "High")),
+    lead = factor(lead, levels = c("Low", "Medium", "High")),
+    ai_framing = factor(ai_framing, levels = c("Low", "High")),
+    job_role = factor(job_role, levels = c("Manager", "Analyst"))
+  )
+
+
+long_dummy <- long_dummy |>
+  mutate(across(c(age, educ, ml, prog, soft, lead, ai_framing, job_role), as.factor))
+         
+amce_model <- cj(
+  data = long_dummy,
+  formula = chosen ~ age + educ + ml + prog + soft + lead)
+
+summary(amce_model)
+
+
+
+# H1: 
+
+
+
+
+
+
+write.csv(low_ai_gen, file = "low_gen.csv")
+
+
+
+
+
+```
+
+
+```{r}
+
+#original_df <- low_ai_gen
+
+long_df_low_ai_gen <- reshape_conjoint_improved(df = low_ai_gen, choice_prefix = "low_ai_gen", traits_prefix = "low_gen")
+
+long_df_low_ai_sp <- reshape_conjoint_improved(df = low_ai_sp, choice_prefix = "low_ai_sp", traits_prefix = "low_sp")
+
+long_df_high_ai_gen <- reshape_conjoint_improved(df = high_ai_gen, choice_prefix = "high_ai_gen", traits_prefix = "high_gen")
+
+long_df_high_ai_sp <- reshape_conjoint_improved(df = high_ai_sp, choice_prefix = "high_ai_sp", traits_prefix = "high_sp")
+
+
+# Join them all into a single dataframe
+
+long_dummy_improved <- rbind(long_df_low_ai_gen,
+                    long_df_low_ai_sp,
+                    long_df_high_ai_gen,
+                    long_df_high_ai_sp)
+
+```
+
+```{r}
+
+# Read the CSV
+cjoint_data <- readRDS("../01_data/long_survey_df.rds") |>
+  mutate(
+    # Convert key variables
+    chosen = as.numeric(chosen),
+    ai_framing = factor(ai_framing, levels = c("low", "high")),
+    job_role = factor(job_role, levels = c("manager", "analyst")),
+    age = as.numeric(age),
+    educ = factor(educ, levels = c("Bachelor's", "Master's", "PhD")),
+    ml = factor(paste0("ml_", ml), levels = c("ml_None", "ml_Basic", "ml_Intermediate", "ml_Advanced")),
+    prog = factor(paste0("prog_", prog), levels = c("prog_None", "prog_Basic", "prog_Intermediate", "prog_Advanced")),
+    soft = factor(paste0("soft_", soft), levels = c("soft_Low", "soft_Medium", "soft_High")),
+    lead = factor(paste0("lead_", lead), levels = c("lead_Low", "lead_Medium", "lead_High"))
+  ) %>%
+  # Strip all labels and drop unused levels
+  mutate(across(everything(), ~ unclass(.))) %>%
+  mutate(across(where(is.character), as.factor)) %>%
+  mutate(across(where(is.factor), droplevels))
+
+
+bad_cols <- sapply(cjoint_data, function(x) typeof(x))
+table(bad_cols)  # look for anything unusual like 'list' or 'unknown'
+
+
+# Create numeric respondent ID
+cjoint_data <- cjoint_data %>%
+  arrange(PROLIFIC_PID) %>%
+  mutate(RespID = group_indices(., PROLIFIC_PID))
+
+# Create a task index per respondent (each task is a pair of profiles)
+cjoint_data <- cjoint_data %>%
+  arrange(RespID, task_number) %>%
+  mutate(task_fg = cumsum(!duplicated(data.frame(RespID, task_number))))
+
+                              
+```
+
+
+```{r}
+
+# Subset to job role: manager
+manager_data <- cjoint_data %>% filter(job_role == "manager")
+
+conjacp_manager <- conjacp.prepdata(
+  chosen ~ age + educ + ml + prog + soft + lead,
+  data = cjoint_data,
+  tasks = "task_fg",
+  subgroups = "ai_framing",
+  id = "RespID"
+)
+
+results_dacp_manager <- conjacp.estimation(conjacp_manager, estimand = "dacp", adjust = FALSE)
+
+# Define your formula explicitly
+fmla <- as.formula("chosen ~ age + educ + ml + prog + soft + lead")
+
+# Extract variables from the left-hand side
+var_y <- all.vars(update(fmla, . ~ 0))
+print(var_y)
+
+# Just confirm it's a numeric vector
+str(cjoint_data$chosen)
+unique(cjoint_data$chosen)
+
+
+
+```
+
+```{r}
+# Restart R, then run:
+rm(list = ls())  # Clear all objects
+
+# Re-read your processed long data
+cjoint_data <- read.csv("../01_data/long_survey_df.csv")
+
+# Explicit cleaning
+cjoint_data <- cjoint_data %>%
+  mutate(
+    chosen = as.numeric(chosen),
+    ai_framing = factor(ai_framing, levels = c("low", "high")),
+    age = as.numeric(age),
+    educ = factor(educ, levels = c("Bachelor's", "Master's", "PhD")),
+    ml = factor(ml, levels = c("None", "Basic", "Intermediate", "Advanced")),
+    prog = factor(prog, levels = c("None", "Basic", "Intermediate", "Advanced")),
+    soft = factor(soft, levels = c("Low", "Medium", "High")),
+    lead = factor(lead, levels = c("Low", "Medium", "High")),
+    job_role = factor(job_role),
+    RespID = as.numeric(as.factor(PROLIFIC_PID))
+  ) %>%
+  arrange(RespID, task_number) %>%
+  mutate(task_fg = cumsum(!duplicated(data.frame(RespID, task_number))))
+
+# Subset to one role
+manager_data <- cjoint_data %>% filter(job_role == "manager")
+
+# Define formula cleanly
+fmla <- as.formula("chosen ~ age + educ + ml + prog + soft + lead")
+
+# Final attempt
+conjacp_manager <- conjacp.prepdata(
+  formula = fmla,
+  data = manager_data,
+  tasks = "task_fg",
+  subgroups = "ai_framing",
+  id = "RespID"
+)
+
+
+```
+
+```{r}
+# Strip all variable labels and ensure base types
+cjoint_data <- cjoint_data %>%
+  mutate(across(everything(), ~ as.vector(.)))
+
+cjoint_data <- cjoint_data %>%
+  mutate(across(where(is.labelled), ~ as_factor(.))) %>%
+  mutate(across(everything(), unclass))  # strips labels safely
+
+```
+
+
+
+
+```{r}
+conjacp_data <- conjacp.prepdata(
+  chosen ~ age + educ + ml + prog + soft + lead,
+  data = cjoint_data,
+  tasks = "task_fg",
+  subgroups = "ai_framing",
+  id = "RespID"
+)
+
+results_acp <- conjacp.estimation(conjacp_data, estimand = "acp", adjust = FALSE)
+
+
+```
+
+
+
+```{r}
+# Prepare the data for the conjacp model
+cjoint_subset <- cjoint_data |>
+  select(PROLIFIC_PID, task_number, chosen, ai_framing, job_role, age, educ, ml, prog, soft, lead)
+
+cjoint_subset <- cjoint_subset %>%
+  mutate(ai_skill_combo = interaction(ml, prog, sep = "_")) %>%
+  mutate(ai_skill_combo = droplevels(ai_skill_combo))
+
+
+
+conjacp_data <- conjacp.prepdata(chosen ~ job_role +  
+                                   age + educ + ml + prog + soft + lead,
+                                 data = cjoint_data,
+                                 tasks = "task_fg",
+                                 #subgroups = "ai_framing",
+                                 id = "RespID")
+
+,
+                                restrictions = "prog >= ml")  # If supported
+
+sum(is.na(conjacp_data))
+
+str(conjacp_data$data_prep)
+
+# ACPs
+results_acp <- conjacp.estimation(conjacp_data, estimand = "acp", adjust = FALSE)
+
+```
+```{r}
+
+# Clean the data and handle your constraint properly
+cjoint_clean <- cjoint_data %>%
+  select(PROLIFIC_PID, task_id, chosen, ai_framing, job_role, age, educ, ml, prog, soft, lead) %>%
+  # Convert to numeric for constraint checking
+  mutate(
+    ml_num = case_when(
+      ml == "ml_None" ~ 0,
+      ml == "ml_Basic" ~ 1,
+      ml == "ml_Intermediate" ~ 2,
+      ml == "ml_Advanced" ~ 3
+    ),
+    prog_num = case_when(
+      prog == "prog_None" ~ 0,
+      prog == "prog_Basic" ~ 1,
+      prog == "prog_Intermediate" ~ 2,
+      prog == "prog_Advanced" ~ 3
+    )
+  ) %>%
+  # Filter to only valid combinations (prog >= ml)
+  filter(prog_num >= ml_num) %>%
+  # Create the interaction term for valid combinations only
+  mutate(ai_skill_combo = interaction(ml, prog, sep = "_", drop = TRUE)) %>%
+  # Remove the temporary numeric variables
+  select(-ml_num, -prog_num) %>%
+  # Ensure no missing values
+  filter(complete.cases(.))
+
+# Check if this fixes the constraint issue
+table(cjoint_clean$ai_skill_combo)
+
+# Then run the analysis
+conjacp_data <- conjacp.prepdata(chosen ~ ai_framing + job_role + age + educ + 
+                                ai_skill_combo + soft + lead,
+                                data = cjoint_clean, 
+                                tasks = "task_id", 
+                                id = "PROLIFIC_PID")
+
+# Check if this works
+results_acp <- conjacp.estimation(conjacp_data, estimand = "acp", adjust = FALSE)
+
+
+```
+
+```{r}
+# Clean and prepare data following Flavien's pattern
+data_long <- cjoint_data %>%
+  select(PROLIFIC_PID, task_id, chosen, ai_framing, job_role, age, educ, ml, prog, soft, lead) %>%
+  filter(complete.cases(.)) %>%
+  arrange(PROLIFIC_PID)
+
+# Create a proper task variable like Flavien does
+data_long$RespID <- data_long %>% 
+  group_by(PROLIFIC_PID) %>% 
+  group_indices()
+
+data_long$task_fg <- cumsum(!duplicated(data_long[, c("RespID", "task_id")]))
+
+# Create the interaction term
+data_long <- data_long %>%
+  mutate(ai_skill_combo = interaction(ml, prog, sep = "_", drop = TRUE))
+
+# Create CONJACP object following Flavien's pattern exactly
+conjacp_data <- conjacp.prepdata(chosen ~ ai_framing + job_role + age + educ + 
+                                ai_skill_combo + soft + lead,
+                                data = data_long,
+                                tasks = "task_fg",  # Use the new task variable
+                                id = "RespID")     # Use the new ID variable
+
+# Try with explicit subgroups = NULL
+conjacp_data <- conjacp.prepdata(chosen ~ ai_framing + job_role + age + educ + 
+                                ai_skill_combo + soft + lead,
+                                data = data_long,
+                                tasks = "task_fg",
+                                subgroups = NULL,  # Explicitly no subgroups
+                                id = "RespID")
+
+results_acp <- conjacp.estimation(conjacp_data$data_prep, estimand = "acp", adjust = FALSE)
+```
+
+
+
+```{r}
+# Extract the prepared data manually
+data_model <- conjacp_data$data_prep
+formula <- outcome ~ .
+subgroups <- "subgroup"
+
+# Confirm this works manually
+model.frame(formula = formula, data = data_model)  # this line mimics the estimation function's start
+
+
+```
+
+```{r}
+
+data_prep <- conjacp_data$data_prep
+
+library(sandwich)
+library(lmtest)
+
+# Estimate the model
+acp_model <- lm(outcome ~ ., data = data_prep[, !colnames(data_prep) %in% c("subgroup", "clust", "id")])
+
+# Clustered SEs by respondent
+cluster_se <- vcovCL(acp_model, cluster = ~ conjacp_data$data_prep$clust)
+
+# Summary with clustered SEs
+coeftest(acp_model, vcov = cluster_se)
+
+
+```
+
+```{r}
+
+# Extract estimates and standard errors
+acp_summary <- coeftest(acp_model, vcov = cluster_se)
+
+# Convert to data frame
+acp_df <- as.data.frame(acp_summary)
+acp_df$term <- rownames(acp_df)
+colnames(acp_df) <- c("estimate", "std_error", "t_value", "p_value", "term")
+
+# Add 95% confidence intervals
+acp_df <- acp_df %>%
+  mutate(
+    conf_low = estimate - 1.96 * std_error,
+    conf_high = estimate + 1.96 * std_error,
+    significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01 ~ "**",
+      p_value < 0.05 ~ "*",
+      p_value < 0.1 ~ ".",
+      TRUE ~ ""
+    )
+  ) %>%
+  select(term, estimate, std_error, conf_low, conf_high, p_value, significance)
+
+# View it
+head(acp_df)
+
+
+```
+
+```{r}
+
+# Additional analysis incorporating the actual attribute levels
+
+# Create an age group factor for easier interpretation in the analysis
+cjoint_data_with_age_groups <- cjoint_data %>%
+  mutate(
+    # Create age groups (unchanged)
+    age_group = cut(age,
+                    breaks = c(20, 30, 40, 50, 60),
+                    labels = c("21-30", "31-40", "41-50", "51-60"),
+                    include.lowest = TRUE,
+                    right = TRUE),
+    
+    # Reverse factor levels: "worst" comes first
+    ml   = factor(paste0("ml_", ml), 
+                  levels = c("ml_None", "ml_Basic", "ml_Intermediate", "ml_Advanced")),
+    
+    prog = factor(paste0("prog_", prog), 
+                  levels = c("prog_None", "prog_Basic", "prog_Intermediate", "prog_Advanced")),
+    
+    soft = factor(paste0("soft_", soft), 
+                  levels = c("soft_Low", "soft_Medium", "soft_High")),
+    
+    lead = factor(paste0("lead_", lead), 
+                  levels = c("lead_Low", "lead_Medium", "lead_High"))
+  )
+
+
+
+```
+
+```{r}
+acp_results <- conjacp(data = cjoint_data_with_age_groups,
+                            respondent_id = "respondent_id",
+                            task_id = "task_id",
+                            profile_id = "profile_id",
+                            choice = "choice",
+                            attributes = c("age_group", "education", "ml_skill", "prog_skill", "soft_skill", "lead_skill"))
+
+cjoint_data <- long_survey_df %>%
+  select(c("PROLIFIC_PID", "task_id", "task_number", "chosen",
+                  "ai_framing", "job_role",
+                  "age", "educ", "ml", "prog", "soft", "lead")) |>
+  mutate(chosen = as.numeric(chosen),
+         ai_framing = factor(ai_framing, levels = c("low", "high")),
+         job_role = factor(job_role, levels = c("manager", "analyst")),
+         #age = as.numeric(age),
+         # Create age groups (unchanged)
+         age_group = cut(age,
+                    breaks = c(20, 30, 40, 50, 60),
+                    labels = c("21-30", "31-40", "41-50", "51-60"),
+                    include.lowest = TRUE,
+                    right = TRUE),
+         educ = factor(educ, levels = c("Bachelor's", "Master's", "PhD")),
+         ml = factor(paste0("ml_", ml), levels = c("ml_None",
+                                                   "ml_Basic",
+                                                   "ml_Intermediate",
+                                                   "ml_Advanced")),
+         prog = factor(paste0("prog_", prog), levels = c("prog_None",
+                                                         "prog_Basic",
+                                                         "prog_Intermediate",
+                                                         "prog_Advanced")),
+         soft = factor(paste0("soft_", soft), levels = c("soft_Low",
+                                                         "soft_Medium",
+                                                         "soft_High")),
+         lead = factor(paste0("lead_", lead), levels = c("lead_Low",
+                                                         "lead_Medium",
+                                                         "lead_High"))
+         )
+
+# Add a structure check
+str(cjoint_data[c("PROLIFIC_PID", "task_id", "chosen",
+                  "ai_framing", "job_role",
+                  "age", "educ", "ml", "prog", "soft", "lead")])
+
+# Display a sample of the final data
+head(cjoint_data, 10)
+
+library(dplyr)
+
+# Step 1: Create numeric RespID from PROLIFIC_PID
+cjoint_data <- cjoint_data %>%
+  arrange(PROLIFIC_PID) %>%
+  mutate(RespID = group_indices(., PROLIFIC_PID))
+
+# Step 2: Create a unique task ID across respondents
+cjoint_data <- cjoint_data %>%
+  arrange(RespID, task_number) %>%
+  mutate(task_fg = cumsum(!duplicated(data.frame(RespID, task_number))))
+
+cjoint_data <- cjoint_data |>
+  select(-c(PROLIFIC_PID, task_id))
+
+
+```
+
+
+```{r}
+
+## Graph ACPs vs. AMCEs
+    
+# Prepare estimate table
+#table_acpamce_c <- data.frame(
+  
+  modality = c("Age Groups:", "21-30", "31-40", "41-50", "51-60", "",
+               "Eduction Level:", "Bachelor's", "Master's", "PhD", "",
+               "ML Proficiency:", "None", "Basic",
+                                  "Intermediate", "Advanced", "",
+               "Programming:", "None", "Basic",
+                                  "Intermediate", "Advanced", "",
+               "Soft Skills:", "Low", "Medium", "High", "",
+               "Leadership:", "Low", "Medium", "High")
+
+  var = c("", rep("Age Group", 5),
+          "", rep("Education Level", 4),
+          "", rep("ML Proficiency", 5),
+          "", rep("Programming", 5),
+          "", rep("Soft Skills", 4),
+          "", rep("Leadership", 3))
+  
+  estimate = c(1, results_acp_model$estimates[1:4], 1,
+               1, results_acp_model$estimates[5:7], 1,
+               1, results_acp_model$estimates[8:11], 1,
+               1, results_acp_model$estimates[12:15], 1,
+               1, results_acp_model$estimates[16:18], 1,
+               1, results_acp_model$estimates[19:21],
+               1, 0, ind_estimate_c[1:3],
+               1, 1, 0, ind_estimate_c[4:5],
+               1, 1, 0, ind_estimate_c[6:8],
+               1, 1, 0, ind_estimate_c[9:11],
+               1, 1, 0, ind_estimate_c[12:13],
+               1, 1, 0, ind_estimate_c[14:15])
+  
+  se = c(0, sqrt(diag(results_acp_model$vcov_c))[1:4],
+         0, 0, sqrt(diag(results_acp_model$vcov_c))[5:7],
+         0, 0, sqrt(diag(results_acp_model$vcov_c))[8:11],
+         0, 0, sqrt(diag(results_acp_model$vcov_c))[12:15],
+         0, 0, sqrt(diag(results_acp_model$vcov_c))[16:18],
+         0, 0, sqrt(diag(results_acp_model$vcov_c))[19:21],
+         0, 0, ind_se_c[1:3],
+         0, 0, 0, ind_se_c[4:5],
+         0, 0, 0, ind_se_c[6:8],
+         0, 0, 0, ind_se_c[9:11],
+         0, 0, 0, ind_se_c[12:13],
+         0, 0, 0, ind_se_c[14:15])
+  
+  type = c(rep("ACP", length(modality)), rep("AMCE", length(modality)))
+  
+table_acpamce_c <- data.frame(
+  modality = rep(modality, 2),
+  var = rep(var, 2),
+  estimate = c(estimate_acp, estimate_amce),
+  se = c(se_acp, se_amce),
+  type = c(rep("ACP", length(modality)), rep("AMCE", length(modality)))
+)
+
+table_acpamce_c$modality <- factor(table_acpamce_c$modality,
+                                   levels = unique(table_acpamce_c$modality)[length(table_acpamce_c$modality):1])
+
+hline <- data.frame(type = c("AMCE", "ACP"), yint = c(0, 5))
+
+# Plot graphs
+commplot_c <- ggplot(table_acpamce_c, aes(y = estimate, x = modality, group = type)) +
+  coord_flip(ylim = c(-.22, .2)) +
+  geom_hline(data = hline, aes(yintercept = yint), size = .1, colour = "black") +
+  geom_pointrange(aes(ymin = estimate - 1.96 * se, ymax = estimate + 1.96 * se,
+                      color = type, shape = type, fill = type),
+                  position = position_dodge(width = .5), size = .2) +
+  labs(y = "", x = "") +
+  facet_grid(. ~ type) +
+  theme_fg(base_size = 11) +
+  theme(panel.grid.minor = element_blank(),
+        axis.text.y = element_text(hjust = 0 , vjust = .5 ),
+        legend.position = "none")  +
+  scale_shape_manual(values = c(21, 22, 23, 23), name = "") +
+  scale_fill_manual(values = cbPalette, name = "") +
+  scale_colour_manual(values = cbPalette, name = "")
+
+ggsave(commplot_c, filename = "../04_plots/acpamce_comm_c.pdf",
+       height = 2.8, width = 6, device = cairo_pdf)
+
+```
+
+
+
+```{r}
+age_group_amce <- cj(
+  data = cjoint_data_with_age_groups,
+  formula = chosen ~ age_group + educ + ml + prog + soft + lead,
+  id = ~PROLIFIC_PID,
+  estimate = "amce"
+)
+summary(age_group_amce)
+
+# Plot results with age groups
+plot(age_group_amce, main = "Overall AMCE with Age Groups")
+
+```
+
+```{r}
+
+# Run analysis with age groups
+age_group_amce <- amce(formula = chosen ~ age_group + educ + ml + prog + soft + lead,
+                      data = cjoint_data_with_age_groups,
+                      cluster = FALSE,
+                      id = "PROLIFIC_PID")
+
+# Plot results with age groups
+plot(age_group_amce, main = "Overall AMCE with Age Groups")
+
+# Interaction analysis - Does the effect of ML proficiency vary by education level?
+interaction_amce <- amce(formula = chosen ~ age_group + educ + ml + prog + soft + lead + educ:ml,
+                        data = cjoint_data_with_age_groups,
+                        cluster = TRUE,
+                        id = "PROLIFIC_PID")
+
+# Test for ML proficiency requirements by condition
+by_condition_ml_amce <- amce(formula = chosen ~ ml,
+                            data = cjoint_data,
+                            by = "condition",
+                            cluster = TRUE,
+                            id = "PROLIFIC_PID")
+
+plot(by_condition_ml_amce, main = "ML Proficiency Effect by Condition")
+
+# Test for interaction between ML proficiency and Programming skills
+ml_prog_interaction <- amce(formula = chosen ~ ml*prog,
+                           data = cjoint_data,
+                           cluster = TRUE,
+                           id = "PROLIFIC_PID")
+
+# Additional validation of distribution
+ggplot(cjoint_data, aes(x = ml, fill = prog)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~condition) +
+  theme_minimal() +
+  labs(title = "Distribution of ML and Programming Skills by Condition",
+       x = "Machine Learning Proficiency",
+       y = "Count",
+       fill = "Programming Skills")
+
+# Check if there's any correlation between attributes
+# (there shouldn't be in a properly randomized conjoint)
+attr_cors <- cjoint_data %>%
+  select(age, educ, ml, prog, soft, lead) %>%
+  mutate(
+    # Convert factors to numeric for correlation
+    educ_num = as.numeric(educ),
+    ml_num = as.numeric(ml),
+    prog_num = as.numeric(prog),
+    soft_num = as.numeric(soft),
+    lead_num = as.numeric(lead)
+  ) %>%
+  select(age, educ_num, ml_num, prog_num, soft_num, lead_num) %>%
+  cor()
+
+print("Correlation between attributes (should be close to zero):")
+print(attr_cors)
+
+
+
+```
+
+
+```{r}
+
+# Run analysis with age groups
+age_group_amce <- amce(formula = chosen ~ age_group + educ + ml + prog + soft + lead,
+                      data = cjoint_data_with_age_groups) #,
+                      #cluster = TRUE,
+                      #respondent.id = "PROLIFIC_PID")
+
+# Plot results with age groups
+plot(age_group_amce, main = "Overall AMCE with Age Groups")
+
+library(sandwich)
+library(lmtest)
+
+# Run your model without the cluster and respondent.id arguments
+age_group_amce <- amce(
+  formula = chosen ~ age_group + educ + ml + prog + soft + lead,
+  data = cjoint_data_with_age_groups
+)
+
+# Then, adjust for clustering using sandwich package
+model_with_cluster_se <- glm(
+  formula = chosen ~ age_group + educ + ml + prog + soft + lead,
+  data = cjoint_data_with_age_groups,
+  family = binomial()  # assuming a binary outcome
+)
+
+# Calculate robust standard errors with clustering by respondent.id (PROLIFIC_PID)
+cluster_se <- coeftest(model_with_cluster_se, vcov = vcovCL, cluster = ~PROLIFIC_PID)
+
+# View clustered standard errors
+print(cluster_se)
+
+
+
+```
+
+
+```{r}
+library(dplyr)
+#install.packages("fixest")
+library(fixest)  # Fast regression with fixed effects
+
+# Make sure attributes are factors
+cjoint_data <- cjoint_data %>%
+  mutate(across(c(age, educ, ml, prog, soft, lead), as.factor))
+
+# Estimate ACPs using a linear probability model with task fixed effects
+acp_model <- feols(
+  chosen ~ age + educ + ml + prog + soft + lead | task_fg,
+  data = cjoint_data,
+  cluster = ~RespID
+)
+
+summary(acp_model)
+
+
+
+
+
+
+```
+
+
+
+
+```{r}
+
+# Interaction analysis - Does the effect of ML proficiency vary by education level?
+interaction_amce <- amce(formula = chosen ~ age_group + educ + ml + prog + soft + lead + educ:ml,
+                        data = cjoint_data_with_age_groups)
+                       # , cluster = TRUE, respondent.id = "PROLIFIC_PID")
+
+# Test for ML proficiency requirements by condition
+by_condition_ml_amce <- amce(formula = chosen ~ ml,
+                            data = cjoint_data)
+                            #by = "condition")
+                            #, cluster = TRUE, respondent.id = "PROLIFIC_PID")
+
+plot(by_condition_ml_amce, main = "ML Proficiency Effect by Condition")
+
+# Test for interaction between ML proficiency and Programming skills
+ml_prog_interaction <- amce(formula = chosen ~ ml*prog,
+                           data = cjoint_data)
+                           #, cluster = TRUE, respondent.id = "PROLIFIC_PID")
+
+# Additional validation of distribution
+ggplot(cjoint_data, aes(x = ml, fill = prog)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~condition) +
+  theme_minimal() +
+  labs(title = "Distribution of ML and Programming Skills by Condition",
+       x = "Machine Learning Proficiency",
+       y = "Count",
+       fill = "Programming Skills")
+
+# Check if there's any correlation between attributes
+# (there shouldn't be in a properly randomized conjoint)
+attr_cors <- cjoint_data %>%
+  select(age, educ, ml, prog, soft, lead) %>%
+  mutate(
+    # Convert factors to numeric for correlation
+    educ_num = as.numeric(educ),
+    ml_num = as.numeric(ml),
+    prog_num = as.numeric(prog),
+    soft_num = as.numeric(soft),
+    lead_num = as.numeric(lead)
+  ) %>%
+  select(age, educ_num, ml_num, prog_num, soft_num, lead_num) %>%
+  cor()
+
+print("Correlation between attributes (should be close to zero):")
+print(attr_cors)
+
+```
+
+```{r}
+
+# Check and validate the ML-Programming constraint
+constraint_check <- cjoint_data %>%
+  mutate(
+    # Convert factors to numeric for comparison
+    ml_num = as.numeric(ml),
+    prog_num = as.numeric(prog),
+    # Flag profiles where constraint might be violated
+    constraint_violated = ml_num > prog_num
+  ) %>%
+  filter(constraint_violated == TRUE)
+
+# Count any violations
+violation_count <- nrow(constraint_check)
+cat("Profiles violating ML ≤ Programming constraint:", violation_count, "\n")
+
+if (violation_count > 0) {
+  warning("Some profiles violate the constraint that ML proficiency cannot exceed programming skills!")
+  print(head(constraint_check, 10))
+} else {
+  cat("All profiles satisfy the constraint: ML proficiency ≤ Programming skills\n")
+}
+
+# Document the constraint in the analysis
+cat("Note: The conjoint design includes a constraint where Machine Learning proficiency",
+    "cannot exceed Programming/Data Analysis skills. This constraint was implemented",
+    "to ensure realistic candidate profiles.\n")
+
+# Visualize the joint distribution to document the constraint
+ml_prog_dist <- cjoint_data %>%
+  count(ml, prog) %>%
+  complete(ml, prog, fill = list(n = 0)) %>%
+  mutate(
+    ml_num = as.numeric(ml),
+    prog_num = as.numeric(prog),
+    possible = ml_num <= prog_num
+  )
+
+# Create a heatmap of the joint distribution
+ggplot(ml_prog_dist, aes(x = prog, y = ml, fill = n)) +
+  geom_tile() +
+  geom_tile(data = filter(ml_prog_dist, possible == FALSE), 
+            fill = "grey90", alpha = 0.7) +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  theme_minimal() +
+  labs(
+    title = "Joint Distribution of ML and Programming Skills",
+    subtitle = "Grey tiles represent combinations excluded by the ML ≤ Programming constraint",
+    x = "Programming/Data Analysis Skills",
+    y = "Machine Learning Proficiency",
+    fill = "Count"
+  )
+
+
+```
+
+
+
+
+
+
+```{r}
+
+# Technical analysis of the ML-Programming constraint's impact on inference
+
+# Create variables to analyze the constraint impact
+analysis_data <- cjoint_data %>%
+  mutate(
+    # Convert to numeric for analysis
+    ml_level = as.numeric(ml),
+    prog_level = as.numeric(prog),
+    # Create skill gap variable
+    skill_gap = prog_level - ml_level,
+    # Create joint skill variables
+    joint_tech_level = ml_level + prog_level,
+    # Identify profiles with maximum ML given their programming level
+    is_max_ml = (ml_level == prog_level),
+    # Generate a single tech skill variable (sum of both)
+    tech_skill_sum = ml_level + prog_level
+  )
+
+# 1. Distribution of skill gaps to understand constraint impact
+gap_dist <- analysis_data %>%
+  count(skill_gap) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+# 2. Analyze if choice behavior is affected by the constraint
+constraint_effect_model <- glm(
+  chosen ~ is_max_ml + tech_skill_sum + is_max_ml:tech_skill_sum,
+  data = analysis_data,
+  family = binomial
+)
+
+constraint_effect_summary <- tidy(constraint_effect_model, conf.int = TRUE) %>%
+  filter(term != "(Intercept)")
+
+# 3. Alternative model explicitly accounting for the constraint
+# Create modified AM variable for ML that accounts for the constraint
+modified_amce <- amce(
+  formula = chosen ~ age + educ + skill_gap + prog + soft + lead,
+  data = analysis_data)
+#, cluster = TRUE, respondent.id = "PROLIFIC_PID")
+
+# 4. Analyzing the impact of the constraint by experimental condition
+constraint_by_condition <- analysis_data %>%
+  group_by(condition_combined) %>%
+  summarize(
+    n_profiles = n(),
+    pct_max_ml = mean(is_max_ml) * 100,
+    mean_skill_gap = mean(skill_gap),
+    median_skill_gap = median(skill_gap)
+  )
+
+# 5. Create a visualization showing the constraint's effects
+ggplot(analysis_data, aes(x = prog, y = ml, color = factor(chosen))) +
+  geom_jitter(alpha = 0.5, width = 0.25, height = 0.25) +
+  facet_wrap(~ condition_combined) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  theme_minimal() +
+  labs(
+    title = "Constraint Visualization: ML ≤ Programming",
+    subtitle = "Profiles along the diagonal line have maximum allowed ML given their programming level",
+    x = "Programming/Data Analysis Skills",
+    y = "Machine Learning Proficiency",
+    color = "Chosen (1=Yes)"
+  )
+
+# 6. Technical recommendations for handling the constraint
+cat("Technical Recommendations for Handling the ML-Programming Constraint:\n\n",
+    "1. Report the constraint clearly in methods section\n",
+    "2. Consider using the skill_gap variable to explicitly model the constraint\n",
+    "3. Test for interaction effects between ML and programming skills\n",
+    "4. Run sensitivity analyses using only profiles NOT at the constraint boundary\n",
+    "5. Compare models with and without the constraint variable\n",
+    "6. Consider using the joint_tech_level variable for some analyses\n")
+
+
+```
+
+
+```{r}
+estimate_acp <- numeric(length(modality))
+se_acp <- numeric(length(modality))
+# Assign real estimates and SEs to the correct positions (skip headers/baselines)
+# Example for age groups (positions 2:5)
+estimate_acp[2:5] <- results_acp_model$estimates[1:4]
+se_acp[2:5] <- sqrt(diag(results_acp_model$vcov_c))[1:4]
+# Repeat for other attributes, matching the order in results_acp_model$estimates
+# Assign 1 and 0 to headers/baselines
+estimate_acp[grepl(":", modality)] <- 1
+se_acp[grepl(":", modality)] <- 0
+
+
+estimate_amce <- numeric(length(modality))
+se_amce <- numeric(length(modality))
+# Assign real estimates and SEs to the correct positions (skip headers/baselines)
+# Example for age groups (positions 2:5)
+estimate_amce[2:5] <- ind_estimate_c[1:3] # Adjust indices as needed
+se_amce[2:5] <- ind_se_c[1:3] # Adjust indices as needed
+# Repeat for other attributes, matching the order in ind_estimate_c and ind_se_c
+# Assign 1 or 0 to headers/baselines (adjust as needed for plotting)
+estimate_amce[grepl(":", modality)] <- 1
+se_amce[grepl(":", modality)] <- 0
+
+
+
+```
+
+
+

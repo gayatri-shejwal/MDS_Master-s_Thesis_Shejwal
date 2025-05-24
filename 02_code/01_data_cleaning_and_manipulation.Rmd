@@ -1,0 +1,561 @@
+---
+title: "01_data_cleaning_and_manipulation"
+author: "Gayatri Shejwal"
+date: "2025-04-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+# Install required packages if not already installed
+# if (!require(tidyverse)) install.packages("tidyverse")
+# if (!require(janitor)) install.packages("janitor")
+# if (!require(stringr)) install.packages("stringr")
+# if (!require(cjoint)) install.packages("cjoint")
+# devtools::install_github("leeper/cregg")
+
+
+
+
+
+
+# Load packages
+library(tidyverse)
+library(janitor)
+library(stringr)
+library(readxl)
+library(cjoint)  
+library(cregg)
+library(broom)
+```
+
+
+```{r}
+# Step 1: Load the data
+# Using the dummy dataset
+dummy_data <- read_excel("../01_data/01_raw_data/test_data_1.xlsx")
+survey_df <- read_excel("../01_data/01_raw_data/final_data.xlsx")
+
+demo_test <- read.csv("../01_data/01_raw_data/demo_test.csv")
+demo_all <- read.csv("../01_data/01_raw_data/demo_all.csv")
+demo_df <- rbind(demo_test, demo_all)
+  
+
+```
+
+### Part 1: Data Cleaning and Manipulation
+
+```{r}
+cleaned_survey_df <- survey_df |>
+  slice(-1) |>
+  filter(resp_hiring != "No") |>    # Filter for respondents in hiring roles
+  mutate(Duration = as.numeric(Duration),
+         Duration_mins = Duration/60) |>  # Convert to minutes
+    mutate(industry_type_other = ifelse(industry_type_other == "Manufacture", "Manufacturing", industry_type_other)) |>
+  mutate(industry_type = ifelse(industry_type == "Other (Please specify)", industry_type_other, industry_type)) |>
+  select(-c(StartDate,
+            EndDate,
+            ResponseId,
+            Status,
+            IPAddress,
+            RecipientLastName,
+            RecipientFirstName,
+            RecipientEmail,
+            ExternalReference,
+            DistributionChannel,
+            UserLanguage,
+            `t_prolific_id_First Click`,
+            `t_prolific_id_Last Click`,
+            `t_prolific_id_Page Submit`,
+            `t_prolific_id_Click Count`,
+            low_ai_gen_text,
+            low_ai_sp_text,
+            high_ai_gen_text,
+            high_ai_sp_text,
+            seed1_low_gen:seed5_low_gen,
+            seed1_low_sp:seed5_low_sp,
+            seed1_high_gen:seed5_high_gen,
+            seed1_high_sp:seed5_high_sp,
+            attrs1_low_gen, attrs2_low_gen, attrs3_low_gen, attrs4_low_gen, attrs5_low_gen,
+            attrs1_low_sp,attrs2_low_sp, attrs3_low_sp, attrs4_low_sp, attrs5_low_sp,
+            attrs1_high_gen, attrs2_high_gen, attrs3_high_gen, attrs4_high_gen, attrs5_high_gen,
+            attrs1_high_sp, attrs2_high_sp, attrs3_high_sp, attrs4_high_sp, attrs5_high_sp,
+         prolific_id, Duration, industry_type_other)) |>
+  filter(Duration_mins >= 2.4) |>
+  filter(!duplicated(PROLIFIC_PID)) |>
+  
+  # Manipulation Check: Delete the observations that fail more than one of the manipulation checks
+
+  mutate(m_check = case_when(ai_framing == "low" & check_1 == "The company relies heavily on AI." & check_2 == "Significantly" ~ "fail",
+                             ai_framing == "high" & check_1 == "The company has limited or no use of AI." & check_2 == "Not at all" ~ "fail",
+                             .default = "pass")) |>
+  filter(m_check == "pass") |>
+  arrange(PROLIFIC_PID)
+
+
+cleaned_demo_df <- demo_df |>
+  mutate(Time.taken = as.numeric(Time.taken),
+         Time.taken_mins = Time.taken/60,
+         Region = ifelse(Country.of.residence == "United States", "US", "EU")) |>
+  filter(Hiring.experience == "Yes",
+         Status == "APPROVED") |>
+         #Completion.code == "C1LGE42N",
+         #Time.taken_mins >= 2.4
+  filter(!duplicated(Participant.id)) |>
+  select(-c(Submission.id, Custom.study.tncs.accepted.at, Started.at, Completed.at, Reviewed.at, Archived.at, Time.taken, Completion.code, Total.approvals, Hiring.experience, Country.of.birth, Student.status, Employment.status)) |>
+  mutate(resp_age_num = Age) |>
+  arrange(Participant.id)
+  
+returned <- demo_df |>
+  filter(Status != "APPROVED")
+
+returned_list <- unique(returned$Participant.id)
+
+cleaned_survey_df <- cleaned_survey_df |>
+  filter(!(PROLIFIC_PID %in% returned_list))
+```
+
+
+```{r}
+#test <- cbind(sort(cleaned_demo_df$Participant.id), sort(clean$PROLIFIC_PID))
+
+# Get unique values in each column
+unique_col1 <- unique(cleaned_demo_df$Participant.id)
+unique_col2 <- unique(cleaned_survey_df$PROLIFIC_PID)
+
+# Check if unique values in col1 match the unique values in col2
+if (setequal(unique_col1, unique_col2)) {
+  print("The unique values in col1 match the unique values in col2.")
+} else {
+  print("The unique values in col1 do not match the unique values in col2.")
+}
+
+if (all(unique_col2 %in% unique_col1)) {
+  print("All unique values in col1 are in col2.")
+} else {
+  print("Not all unique values in col1 are in col2.")
+}
+
+
+# Find values that are in col1 but not in col2
+col1_not_in_col2 <- setdiff(unique_col1, unique_col2)
+
+# Find values that are in col2 but not in col1
+col2_not_in_col1 <- setdiff(unique_col2, unique_col1)
+
+# Print the results
+cat("Values in col1 but not in col2:", col1_not_in_col2, "\n")
+cat("Values in col2 but not in col1:", col2_not_in_col1, "\n")
+
+```
+
+```{r}
+# Combine the survey and demographoc dataframes
+
+cleaned_demo_df <- cleaned_demo_df |>
+  rename(PROLIFIC_PID = Participant.id)
+
+combined_df <- left_join(cleaned_survey_df, cleaned_demo_df, by = "PROLIFIC_PID")
+
+write.csv(combined_df, file = "../01_data/02_processed_data/combined_df.csv")
+
+
+```
+
+
+
+
+```{r}
+# Filter for each condition
+# Low AI + Manager:
+
+low_ai_gen <- combined_df |>
+  filter(ai_framing == "low",
+         job_role == "manager") |>
+  select(-c(low_ai_sp_choice_1:low_ai_sp_choice_5,
+            traits1a_low_sp:traits5b_low_sp,
+            high_ai_gen_choice_1:high_ai_gen_choice_5,
+            traits1a_high_gen:traits5b_high_gen,
+            high_ai_sp_choice_1:high_ai_sp_choice_5,
+            traits1a_high_sp:traits5b_high_sp))
+
+##--------------------------------------------------------------------------##
+
+# Low AI + Analyst:
+
+low_ai_sp <- combined_df |>
+  filter(ai_framing == "low",
+         job_role == "analyst") |>
+  select(-c(low_ai_gen_choice_1:low_ai_gen_choice_5,
+            traits1a_low_gen:traits5b_low_gen,
+            high_ai_gen_choice_1:high_ai_gen_choice_5,
+            traits1a_high_gen:traits5b_high_gen,
+            high_ai_sp_choice_1:high_ai_sp_choice_5,
+            traits1a_high_sp:traits5b_high_sp))
+
+##--------------------------------------------------------------------------##
+
+# High AI + Manager:
+
+high_ai_gen <- combined_df |>
+  filter(ai_framing == "high",
+         job_role == "manager") |>
+  select(-c(low_ai_gen_choice_1:low_ai_gen_choice_5,
+            traits1a_low_gen:traits5b_low_gen,
+            low_ai_sp_choice_1:low_ai_sp_choice_5,
+            traits1a_low_sp:traits5b_low_sp,
+            high_ai_sp_choice_1:high_ai_sp_choice_5,
+            traits1a_high_sp:traits5b_high_sp))
+
+##--------------------------------------------------------------------------##
+
+# High AI + Analyst:
+
+high_ai_sp <- combined_df |>
+  filter(ai_framing == "high",
+         job_role == "analyst") |>
+  select(-c(low_ai_gen_choice_1:low_ai_gen_choice_5,
+            traits1a_low_gen:traits5b_low_gen,
+            low_ai_sp_choice_1:low_ai_sp_choice_5,
+            traits1a_low_sp:traits5b_low_sp,
+            high_ai_gen_choice_1:high_ai_gen_choice_5,
+            traits1a_high_gen:traits5b_high_gen))
+
+```
+
+
+Create a function to convert all the 4 scenarios into long format data.
+
+
+```{r}
+
+reshape_df <- function(df, choice_prefix, traits_prefix, task_count = 5) {
+  # Validate input data
+  required_cols <- c("PROLIFIC_PID")
+  for (i in 1:task_count) {
+    required_cols <- c(required_cols, 
+                      paste0("traits", i, "a_", traits_prefix),
+                      paste0("traits", i, "b_", traits_prefix),
+                      paste0(choice_prefix, "_choice_", i))
+  }
+  
+  missing_cols <- setdiff(required_cols, names(df))
+  if (length(missing_cols) > 0) {
+    stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+  
+  # Define the attribute levels
+  attr_levels <- list(
+    age = NULL,  # Age is numeric, we'll handle it differently
+    educ = c("Bachelor's", "Master's", "PhD"),
+    ml = c("None", "Basic", "Intermediate", "Advanced"),
+    prog = c("None", "Basic", "Intermediate", "Advanced"),
+    soft = c("Low", "Medium", "High"),
+    lead = c("Low", "Medium", "High")
+  )
+  
+  all_tasks <- list()
+  
+  for (i in 1:task_count) {
+    tryCatch({
+      col_a <- paste0("traits", i, "a_", traits_prefix)
+      col_b <- paste0("traits", i, "b_", traits_prefix)
+      choice_col <- paste0(choice_prefix, "_choice_", i)
+      
+      task_df <- df %>%
+        select(PROLIFIC_PID, all_of(c(col_a, col_b, choice_col))) %>%
+        rename(
+          traits_A = !!sym(col_a),
+          traits_B = !!sym(col_b),
+          chosen_profile = !!sym(choice_col)
+        )
+      
+      # Handle potential NA values in choice column
+      task_df <- task_df %>%
+        mutate(chosen_profile = ifelse(is.na(chosen_profile), "No choice", chosen_profile))
+      
+      task_a <- task_df %>%
+        transmute(
+          PROLIFIC_PID,
+          task_number = i,
+          profile = "A",
+          chosen = ifelse(chosen_profile == "Candidate A", 1, 0),
+          traits = traits_A
+        )
+      
+      task_b <- task_df %>%
+        transmute(
+          PROLIFIC_PID,
+          task_number = i,
+          profile = "B",
+          chosen = ifelse(chosen_profile == "Candidate B", 1, 0),
+          traits = traits_B
+        )
+      
+      task_long <- bind_rows(task_a, task_b) %>%
+        # Create a unique identifier for each task
+        mutate(task_id = paste(PROLIFIC_PID, task_number, sep = "_"))
+      
+      # Check if traits column contains the expected pattern before separating
+      if (!all(grepl("\\|", task_long$traits))) {
+        warning(paste("Task", i, "contains traits without the expected '|' delimiter"))
+      }
+      
+      # Separate traits with error handling
+      task_long <- task_long %>%
+        separate(traits, into = c("age", "educ", "ml", "prog", "soft", "lead"), 
+                sep = "\\|", remove = TRUE, fill = "right") %>%
+        # Clean up potential whitespace
+        mutate(across(c(age, educ, ml, prog, soft, lead), ~str_trim(.)))
+      
+      # Convert attributes to factors with defined levels
+      task_long <- task_long %>%
+        mutate(
+          # Age should be numeric
+          age = as.numeric(age),
+          # Other attributes as factors
+          educ = factor(educ, levels = attr_levels$educ),
+          ml = factor(ml, levels = attr_levels$ml),
+          prog = factor(prog, levels = attr_levels$prog),
+          soft = factor(soft, levels = attr_levels$soft),
+          lead = factor(lead, levels = attr_levels$lead)
+        )
+      
+      all_tasks[[i]] <- task_long
+    }, error = function(e) {
+      warning(paste("Error processing task", i, ":", e$message))
+      NULL
+    })
+  }
+  
+  # Remove any NULL tasks due to errors
+  all_tasks <- all_tasks[!sapply(all_tasks, is.null)]
+  
+  if (length(all_tasks) == 0) {
+    stop("No tasks were successfully processed")
+  }
+  
+  long_df <- bind_rows(all_tasks)
+  
+  # Add respondent metadata - exclude trait and choice columns
+  meta_cols <- df %>% 
+    select(-matches(paste0("traits\\d+[ab]_", traits_prefix)), 
+           -matches(paste0(choice_prefix, "_choice_\\d+")))
+  
+  # Join metadata using a safe join that warns about duplicates
+  duplicated_ids <- meta_cols$PROLIFIC_PID[duplicated(meta_cols$PROLIFIC_PID)]
+  if (length(duplicated_ids) > 0) {
+    warning("Duplicate PROLIFIC_PIDs found: ", paste(duplicated_ids, collapse = ", "), 
+            ". This may cause issues with the join.")
+  }
+  
+  long_df <- left_join(long_df, meta_cols, by = "PROLIFIC_PID")
+  
+  # Validate output
+  if (nrow(long_df) == 0) {
+    warning("Resulting dataframe has 0 rows")
+  }
+  
+  # Print summary stats
+  cat("Reshape summary:\n")
+  cat("- Original rows:", nrow(df), "\n")
+  cat("- Resulting rows:", nrow(long_df), "\n")
+  cat("- Attributes converted to factors:", 
+      paste(names(long_df)[names(long_df) %in% c("age", "educ", "ml", "prog", "soft", "lead")], 
+            collapse = ", "), "\n")
+  
+  return(long_df)
+}
+
+```
+
+
+```{r}
+
+# Apply the improved function to your four conditions
+# First let's create a function to check for potential data issues
+check_reshape_results <- function(original_df, long_df, condition_name) {
+  cat("\n==== Checking", condition_name, "====\n")
+  
+  # Check expected row count
+  expected_rows <- nrow(original_df) * 2 * 5  # respondents × 2 profiles × 5 tasks
+  cat("Expected rows:", expected_rows, "\n")
+  cat("Actual rows:", nrow(long_df), "\n")
+  
+  # Check for missing values in key attributes
+  missing_counts <- sapply(long_df[c("age", "educ", "ml", "prog", "soft", "lead")], 
+                         function(x) sum(is.na(x)))
+  cat("Missing values per attribute:\n")
+  print(missing_counts)
+  
+  # Check choice distribution
+  choice_dist <- table(long_df$chosen)
+  cat("Choice distribution (0=not chosen, 1=chosen):\n")
+  print(choice_dist)
+  
+  # Verify correct choice coding (should sum to 1 per task)
+  choice_check <- long_df %>%
+    group_by(PROLIFIC_PID, task_number) %>%
+    summarize(choice_sum = sum(chosen), .groups = "drop")
+  
+  invalid_choices <- filter(choice_check, choice_sum != 1)
+  if (nrow(invalid_choices) > 0) {
+    cat("WARNING: Found tasks where choice doesn't sum to 1:\n")
+    print(head(invalid_choices, 10))
+  } else {
+    cat("All tasks have valid choice coding (sum to 1)\n")
+  }
+  
+  # Return validation result
+  list(
+    expected_rows = expected_rows,
+    actual_rows = nrow(long_df),
+    missing_counts = missing_counts,
+    choice_dist = choice_dist,
+    invalid_choices = invalid_choices
+  )
+}
+
+##--------------------------------------------------------------------------##
+
+# Apply the improved reshaping and validation
+low_ai_gen_long <- reshape_df(df = low_ai_gen, 
+                                         choice_prefix = "low_ai_gen", 
+                                         traits_prefix = "low_gen")
+check_reshape_results(low_ai_gen, low_ai_gen_long, "Low AI + Manager")
+
+low_ai_sp_long <- reshape_df(df = low_ai_sp, 
+                                        choice_prefix = "low_ai_sp", 
+                                        traits_prefix = "low_sp")
+check_reshape_results(low_ai_sp, low_ai_sp_long, "Low AI + Analyst")
+
+high_ai_gen_long <- reshape_df(df = high_ai_gen, 
+                                          choice_prefix = "high_ai_gen", 
+                                          traits_prefix = "high_gen")
+check_reshape_results(high_ai_gen, high_ai_gen_long, "High AI + Manager")
+
+high_ai_sp_long <- reshape_df(df = high_ai_sp, 
+                                         choice_prefix = "high_ai_sp", 
+                                         traits_prefix = "high_sp")
+check_reshape_results(high_ai_sp, high_ai_sp_long, "High AI + Analyst")
+
+##--------------------------------------------------------------------------##
+
+# Combine all conditions into a single dataframe with a condition identifier
+long_survey_df <- bind_rows(
+  low_ai_gen_long %>% mutate(condition = "Low AI + Manager"),
+  low_ai_sp_long %>% mutate(condition = "Low AI + Analyst"),
+  high_ai_gen_long %>% mutate(condition = "High AI + Manager"),
+  high_ai_sp_long %>% mutate(condition = "High AI + Analyst")
+)
+
+sum(is.na(long_survey_df))
+
+```
+
+
+```{r}
+
+# Save the long format data for further analysis
+write.csv(long_survey_df, file = "../01_data/02_processed_data/long_survey_df.csv")
+#saveRDS(long_survey_df, file = "../01_data/long_survey_df.rds")
+
+```
+
+
+```{r}
+#long_survey_df <- read.csv("../01_data/long_survey_df.csv")
+# Safely load the long-format data
+#long_survey_df <- readRDS("../01_data/long_survey_df.rds")
+
+```
+
+
+```{r}
+# Prepare data for cjoint analysis
+cjoint_data <- long_survey_df %>%
+  mutate(
+    # Age as numeric
+    age = as.numeric(age),
+    # Other attributes as factors with correct ordering
+    educ = factor(educ, levels = c("Bachelor's", "Master's", "PhD")),
+    ml = factor(ml, levels = c("None", "Basic", "Intermediate", "Advanced")),
+    prog = factor(prog, levels = c("None", "Basic", "Intermediate", "Advanced")),
+    soft = factor(soft, levels = c("Low", "Medium", "High")),
+    lead = factor(lead, levels = c("Low", "Medium", "High"))
+  )
+
+# Add a structure check
+str(cjoint_data[c("PROLIFIC_PID", "task_number", "profile", "chosen", 
+                 "age", "educ", "ml", "prog", "soft", "lead", "condition")])
+
+# Display a sample of the final data
+head(cjoint_data, 10)
+
+```
+
+```{r}
+# Additional analysis incorporating the actual attribute levels
+
+# Create an age group factor for easier interpretation in the analysis
+cjoint_data_with_age_groups <- cjoint_data %>%
+  mutate(
+    #PROLIFIC_PID = as.factor(PROLIFIC_PID),
+    profile = factor(profile),
+    condition = factor(condition),
+    # Create age groups
+    age_group = cut(age, 
+                   breaks = c(20, 30, 40, 50, 60), 
+                   labels = c("21-30", "31-40", "41-50", "51-60"),
+                   include.lowest = TRUE,
+                   right = TRUE),
+    ai_framing = factor(ai_framing, levels = c("low", "high")),
+    job_role = factor(job_role, levels = c("manager", "analyst")),
+    educ = factor(educ, levels = c("Bachelor's", "Master's", "PhD")),
+    ml = factor(paste0("ml_", ml), levels = c("ml_None",
+                                              "ml_Basic",
+                                              "ml_Intermediate",
+                                              "ml_Advanced")),
+    prog = factor(paste0("prog_", prog), levels = c("prog_None",
+                                                    "prog_Basic",
+                                                    "prog_Intermediate",
+                                                    "prog_Advanced")),
+    soft = factor(paste0("soft_", soft), levels = c("soft_Low",
+                                                    "soft_Medium",
+                                                    "soft_High")),
+    lead = factor(paste0("lead_", lead), levels = c("lead_Low",
+                                                    "lead_Medium",
+                                                    "lead_High")))
+
+
+```
+
+```{r}
+
+# Step 1: Create numeric RespID from PROLIFIC_PID
+cjoint_data_with_age_groups <- cjoint_data_with_age_groups %>%
+  arrange(PROLIFIC_PID) %>%
+  mutate(RespID = group_indices(., PROLIFIC_PID))
+
+# Step 2: Create a unique task ID across respondents
+cjoint_data_with_age_groups <- cjoint_data_with_age_groups %>%
+  arrange(RespID, task_number) %>%
+  mutate(task_fg = cumsum(!duplicated(data.frame(RespID, task_number))))
+
+cjoint_data_subset <- cjoint_data_with_age_groups |>
+  select(RespID, task_fg, chosen, age_group, educ, ml, prog, soft, lead, ai_framing, job_role)
+
+```
+
+```{r}
+
+write_csv(cjoint_data_subset, "../01_data/02_processed_data/long_conjoint_df.csv")
+
+```
+
+
+
