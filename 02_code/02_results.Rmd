@@ -9,22 +9,922 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+```{r}
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+# Load packages
+library(doParallel)
+library(foreach)
+library(haven)
+library(patchwork)
+library(sandwich)
+library(sjlabelled)
+library(stringr)
+library(tidyverse)
+library(rJava)
+#install.packages("xlsx")
+library(xlsx)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+library(janitor)
+library(stringr)
+library(readxl)
+library(cjoint)  
+library(cregg)
+library(broom)
 
-```{r cars}
-summary(cars)
+source("../03_functions/conjacp.R") ### Function that calculates ACPs
+source("../03_functions/FunctionVCOVCluster.R") ### Function that calculates clustered SEs
+source("../03_functions/FunctionTableGraph.R") ### Function that prepare the data frame for result graphs
+source("../03_functions/theme_graph.R")
+
+extrafont::loadfonts()
+cbPalette <- c("#E69F00", "#009E73", "#0072B2", "#D55E00", "#CC79A7", "#999999", "#56B4E9", "#F0E442")
+
+
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+```{r}
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+long_conjoint_df <- read.csv("../01_data/02_processed_data/long_conjoint_df.csv")
+
+long_conjoint_df <- long_conjoint_df |>
+  mutate(chosen = as.numeric(chosen),
+         age_group = as.factor(age_group),
+         educ = as.factor(educ),
+         ml = as.factor(paste0("ml_", ml)),
+         prog = as.factor(paste0("prog_", prog)),
+         soft = as.factor(paste0("soft_", soft)),
+         lead = as.factor(paste0("lead_", lead)),
+         ai_framing = as.factor(ai_framing),
+         job_role = as.factor(job_role))
+
+# Get attribute levels and relevel
+levels(long_conjoint_df$age_group) = c("21-30", "31-40", "41-50", "51-60")
+levels(long_conjoint_df$educ) = c("Bachelor's", "Master's", "PhD")
+levels(long_conjoint_df$ml) = c("ml_None", "ml_Basic", 
+                                   "ml_Intermediate", "ml_Advanced")
+levels(long_conjoint_df$prog) = c("prog_None", "prog_Basic", 
+                                   "prog_Intermediate", "prog_Advanced")
+levels(long_conjoint_df$soft) = c("soft_Low", "soft_Medium", "soft_High")
+levels(long_conjoint_df$lead) = c("lead_Low", "lead_Medium", "lead_High")
+levels(long_conjoint_df$ai_framing) = c("Low", "High")
+levels(long_conjoint_df$job_role) = c("Manager", "Analyst")
+
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+```{r}
+
+# AI_framing: Low
+
+long_conjoint_df_low <- subset(long_conjoint_df, ai_framing == "Low")
+long_conjoint_df_high <- subset(long_conjoint_df, ai_framing == "High")
+
+conjacp_data_cjoint_low <- conjacp.prepdata(
+  chosen ~ age_group + educ + ml*prog + soft + lead,
+  data = long_conjoint_df_low,
+  tasks = "task_fg",
+  id = "RespID"
+)
+
+results_acp_model_low <- conjacp.estimation(conjacp_data_cjoint_low, estimand = "acp", adjust = FALSE)
+
+
+
+
+# AI_framing: High
+conjacp_data_cjoint_high <- conjacp.prepdata(
+  chosen ~ age_group + educ + ml*prog + soft + lead,
+  data = long_conjoint_df_high,
+  tasks = "task_fg",
+  id = "RespID"
+)
+
+results_acp_model_high <- conjacp.estimation(conjacp_data_cjoint_high, estimand = "acp", adjust = FALSE)
+
+
+print(results_acp_model_low)
+print(results_acp_model_high)
+
+```
+```{r}
+
+# Plot for ACPs
+
+# Extract estimates and standard errors
+df_low <- data.frame(
+  attribute = names(results_acp_model_low$estimates),
+  estimate = results_acp_model_low$estimates,
+  se = sqrt(diag(results_acp_model_low$vcov)),
+  framing = "Low AI"
+)
+
+df_high <- data.frame(
+  attribute = names(results_acp_model_high$estimates),
+  estimate = results_acp_model_high$estimates,
+  se = sqrt(diag(results_acp_model_high$vcov)),
+  framing = "High AI"
+)
+
+
+# Combine both
+df_acp <- rbind(df_low, df_high)
+
+# Clean attribute names
+df_acp$label <- gsub(".*\\.", "", df_acp$attribute)
+df_acp$group <- gsub("\\..*", "", df_acp$attribute)
+
+# Order labels within each group
+df_acp <- df_acp %>%
+  group_by(group) %>%
+  mutate(label = factor(label, levels = rev(unique(label)))) %>%
+  ungroup()
+
+# Recode groups, catch unknowns as "Other"
+df_acp$group <- dplyr::recode(df_acp$group,
+  "agegroup" = "Age Group",
+  "educ" = "Education",
+  "ml" = "AI/ML Proficiency",
+  "prog" = "Programming/Data Analysis Skills",
+  "soft" = "Soft Skills",
+  "lead" = "Leadership/Decision Making",
+  .default = "Other"
+)
+
+# Drop unknowns if any (i.e., "Other")
+df_acp <- df_acp %>% filter(group != "Other")
+
+# Set facet order
+df_acp$group <- factor(df_acp$group, levels = c(
+  "Age Group",
+  "Education",
+  "AI/ML Proficiency",
+  "Programming/Data Analysis Skills",
+  "Soft Skills",
+  "Leadership/Decision Making"
+))
+
+
+# Plot
+ggplot(df_acp, aes(x = estimate, y = label, color = framing, shape = framing)) +
+  geom_point(position = position_dodge(width = 0.5), size = 5) +
+  geom_errorbar(aes(xmin = estimate - 1.96 * se, xmax = estimate + 1.96 * se),
+                position = position_dodge(width = 0.5),
+                width = 0.2,
+                size = 0.8,
+                show.legend = TRUE) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
+  facet_wrap(~ group, scales = "free_y", ncol = 2) +
+  #scale_y_discrete(expand = expansion(mult = c(0.1, 0.2))) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.title.position = "panel",
+    axis.text.x = element_text(size = 22),
+    axis.text.y = element_text(size = 22, margin = margin(b = 5)),
+    strip.text = element_text(size = 25, face = "bold", margin = margin(b = 15)),
+    legend.text = element_text(size = 22),
+    legend.title = element_text(size = 24, face = "bold"),
+    legend.position = "right",
+    panel.grid.major.y = element_line(color = "gray90")
+  ) +
+  guides(
+  color = guide_legend(override.aes = list(size = 5)),
+  shape = guide_legend(override.aes = list(size = 5)),
+  linetype = guide_legend(override.aes = list(linetype = "solid", size = 1.5))
+) +
+  labs(
+    title = "",
+    x = NULL,
+    y = NULL,
+    color = "AI Framing",
+    shape = "AI Framing"
+  ) +
+  scale_color_manual(values = c("Low AI" = "#1b9e77", "High AI" = "#d95f02"))
+
+# Save
+ggsave("H1_acp_estimates_low_vs_high_ai.png", width = 20, height = 15, dpi = 300, bg = "white")
+ggsave("H1_acp_estimates_low_vs_high_ai.pdf", width = 20, height = 15)
+
+```
+
+```{r}
+# Table for H1
+
+#install.packages("gt")
+library(gt)
+
+library(dplyr)
+library(tidyr)
+library(gt)
+
+# Filter and reshape the data
+H1_table_df <- df_acp %>%
+  mutate(
+    estimate = round(estimate, 3),
+    se = round(se, 3),
+    ci_lower = estimate - 1.96 * se, 3,
+    ci_upper = estimate + 1.96 * se, 3,
+    significance = ifelse(ci_lower > 0 | ci_upper < 0, "**", ""),
+    est_se = paste0(estimate, " | ", se, significance)
+  ) %>%
+  filter(label %in% c("ml_None", "ml_Basic", "ml_Intermediate",
+                      "ml_Advanced", "prog_None", "prog_Basic",
+                      "prog_Intermediate", "prog_Advanced")) %>%
+  select(label, framing, est_se) %>%
+  pivot_wider(names_from = framing, values_from = est_se)
+
+# Rename columns for clarity
+colnames(H1_table_df) <- c("Attribute Level", "Low AI (Estimate | SE)", "High AI (Estimate | SE)")
+
+# Create gt table
+H1_table <- H1_table_df %>%
+  gt() %>%
+  #tab_header(
+  # title = "CACP Estimates with 95% Confidence Intervals" %>%
+  cols_align(align = "center")
+
+# Save to LaTeX
+gtsave(H1_table, "H1_table.tex")
+
+
+```
+
+
+
+```{r}
+
+# Table for H3
+
+# Filter and reshape the data
+H3_table_df <- df_acp %>%
+  mutate(
+    estimate = round(estimate, 3),
+    se = round(se, 3),
+    ci_lower = estimate - 1.96 * se, 3,
+    ci_upper = estimate + 1.96 * se, 3,
+    significance = ifelse(ci_lower > 0 | ci_upper < 0, "**", ""),
+    est_se = paste0(estimate, " | ", se, significance)
+  ) %>%
+  filter(label %in% c("soft_Low", "soft_Medium", "soft_High",
+                      "lead_Low", "lead_Medium", "lead_High")) %>%
+  select(label, framing, est_se) %>%
+  pivot_wider(names_from = framing, values_from = est_se)
+
+# Rename columns for clarity
+colnames(H3_table_df) <- c("Attribute Level", "Low AI (Estimate | SE)", "High AI (Estimate | SE)")
+
+# Create gt table
+H3_table <- H3_table_df %>%
+  gt() %>%
+  #tab_header(
+  # title = "ACP Estimates with 95% Confidence Intervals" %>%
+  cols_align(align = "center")
+
+# Save to LaTeX
+gtsave(H3_table, "H3_table.tex")
+
+
+```
+
+
+
+```{r}
+
+# Table for H4
+
+# Filter and reshape the data
+H4_table_df <- df_acp %>%
+  mutate(
+    estimate = round(estimate, 3),
+    se = round(se, 3),
+    ci_lower = estimate - 1.96 * se, 3,
+    ci_upper = estimate + 1.96 * se, 3,
+    significance = ifelse(ci_lower > 0 | ci_upper < 0, "**", ""),
+    est_se = paste0(estimate, " | ", se, significance)
+  ) %>%
+  filter(label %in% c("21-30", "31-40", "41-50", "51-60")) %>%
+  select(label, framing, est_se) %>%
+  pivot_wider(names_from = framing, values_from = est_se)
+
+# Rename columns for clarity
+colnames(H4_table_df) <- c("Attribute Level", "Low AI (Estimate | SE)", "High AI (Estimate | SE)")
+
+# Create gt table
+H4_table <- H4_table_df %>%
+  gt() %>%
+  #tab_header(
+  # title = "ACP Estimates with 95% Confidence Intervals" %>%
+  cols_align(align = "center")
+
+# Save to LaTeX
+gtsave(H4_table, "H4_table.tex")
+
+
+```
+
+
+
+```{r}
+
+# Table for H5
+
+# Filter and reshape the data
+H5_table_df <- df_acp %>%
+  mutate(
+    estimate = round(estimate, 3),
+    se = round(se, 3),
+    ci_lower = estimate - 1.96 * se, 3,
+    ci_upper = estimate + 1.96 * se, 3,
+    significance = ifelse(ci_lower > 0 | ci_upper < 0, "**", ""),
+    est_se = paste0(estimate, " | ", se, significance)
+  ) %>%
+  filter(label %in% c("Bachelor's", "Master's", "PhD")) %>%
+  select(label, framing, est_se) %>%
+  pivot_wider(names_from = framing, values_from = est_se)
+
+# Rename columns for clarity
+colnames(H5_table_df) <- c("Attribute Level", "Low AI (Estimate | SE)", "High AI (Estimate | SE)")
+
+# Create gt table
+H5_table <- H5_table_df %>%
+  gt() %>%
+  #tab_header(
+  # title = "ACP Estimates with 95% Confidence Intervals" %>%
+  cols_align(align = "center")
+
+# Save to LaTeX
+gtsave(H5_table, "H5_table.tex")
+
+
+```
+
+
+```{r}
+### For H2:
+  
+# AI_framing: Low
+
+long_conjoint_df_low_manager <- subset(long_conjoint_df_low, job_role == "Manager")
+long_conjoint_df_low_analyst <- subset(long_conjoint_df_low, job_role == "Analyst")
+long_conjoint_df_high_manager <- subset(long_conjoint_df_high, job_role == "Manager")
+long_conjoint_df_high_analyst <- subset(long_conjoint_df_high, job_role == "Analyst")
+
+
+##-------------------------------------------------------------------------##
+# AI_framing: Low + Manager
+
+
+conjacp_data_cjoint_low_manager <- conjacp.prepdata(
+  chosen ~ age_group + educ + ml*prog + soft + lead,
+  data = long_conjoint_df_low_manager,
+  tasks = "task_fg",
+  #subgroups = "ai_framing",
+  id = "RespID"
+)
+
+results_acp_model_low_manager <- conjacp.estimation(conjacp_data_cjoint_low_manager, estimand = "acp", adjust = FALSE)
+
+##-------------------------------------------------------------------------##
+# AI_framing: Low + Analyst
+
+conjacp_data_cjoint_low_analyst <- conjacp.prepdata(
+  chosen ~ age_group + educ + ml*prog + soft + lead,
+  data = long_conjoint_df_low_analyst,
+  tasks = "task_fg",
+  #subgroups = "ai_framing",
+  id = "RespID"
+)
+
+results_acp_model_low_analyst <- conjacp.estimation(conjacp_data_cjoint_low_analyst, estimand = "acp", adjust = FALSE)
+
+##-------------------------------------------------------------------------##
+
+# AI_framing: High + Manager
+conjacp_data_cjoint_high_manager <- conjacp.prepdata(
+  chosen ~ age_group + educ + ml*prog + soft + lead,
+  data = long_conjoint_df_high_manager,
+  tasks = "task_fg",
+  #subgroups = "ai_framing",
+  id = "RespID"
+)
+
+results_acp_model_high_manager <- conjacp.estimation(conjacp_data_cjoint_high_manager, estimand = "acp", adjust = FALSE)
+
+##-------------------------------------------------------------------------##
+# AI_framing: High + Analyst
+
+conjacp_data_cjoint_high_analyst <- conjacp.prepdata(
+  chosen ~ age_group + educ + ml*prog + soft + lead,
+  data = long_conjoint_df_high_analyst,
+  tasks = "task_fg",
+  #subgroups = "ai_framing",
+  id = "RespID"
+)
+
+results_acp_model_high_analyst <- conjacp.estimation(conjacp_data_cjoint_high_analyst, estimand = "acp", adjust = FALSE)
+
+print(results_acp_model_low_manager)
+print(results_acp_model_low_analyst)
+
+print(results_acp_model_high_manager)
+print(results_acp_model_high_analyst)
+
+```
+
+
+```{r}
+# Plot for ACPs
+# Manager
+# Extract estimates and standard errors
+df_low_manager <- data.frame(
+  attribute = names(results_acp_model_low_manager$estimates),
+  estimate = results_acp_model_low_manager$estimates,
+  se = sqrt(diag(results_acp_model_low_manager$vcov)),
+  framing = "Low AI"
+)
+
+df_high_manager <- data.frame(
+  attribute = names(results_acp_model_high_manager$estimates),
+  estimate = results_acp_model_high_manager$estimates,
+  se = sqrt(diag(results_acp_model_high_manager$vcov)),
+  framing = "High AI"
+)
+
+
+# Combine both
+df_acp_manager <- rbind(df_low_manager, df_high_manager)
+
+# Clean attribute names
+df_acp_manager$label <- gsub(".*\\.", "", df_acp_manager$attribute)
+df_acp_manager$group <- gsub("\\..*", "", df_acp_manager$attribute)
+
+# Order labels within each group
+df_acp_manager <- df_acp_manager %>%
+  group_by(group) %>%
+  mutate(label = factor(label, levels = rev(unique(label)))) %>%
+  ungroup()
+
+# Recode groups, catch unknowns as "Other"
+df_acp_manager$group <- dplyr::recode(df_acp_manager$group,
+  "agegroup" = "Age Group",
+  "educ" = "Education",
+  "ml" = "AI/ML Proficiency",
+  "prog" = "Programming/Data Analysis Skills",
+  "soft" = "Soft Skills",
+  "lead" = "Leadership/Decision Making",
+  .default = "Other"
+)
+
+# Drop unknowns if any (i.e., "Other")
+df_acp_manager <- df_acp_manager %>% filter(group != "Other")
+
+# Set facet order
+df_acp_manager$group <- factor(df_acp_manager$group, levels = c(
+  "Age Group",
+  "Education",
+  "AI/ML Proficiency",
+  "Programming/Data Analysis Skills",
+  "Soft Skills",
+  "Leadership/Decision Making"
+))
+
+
+# Plot
+ggplot(df_acp_manager, aes(x = estimate, y = label, color = framing, shape = framing)) +
+  geom_point(position = position_dodge(width = 0.5), size = 5) +
+  geom_errorbar(aes(xmin = estimate - 1.96 * se, xmax = estimate + 1.96 * se),
+                position = position_dodge(width = 0.5),
+                width = 0.2,
+                size = 0.8,
+                show.legend = TRUE) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
+  facet_wrap(~ group, scales = "free_y", ncol = 2) +
+  #scale_y_discrete(expand = expansion(mult = c(0.1, 0.2))) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.title.position = "panel",
+    axis.text.x = element_text(size = 22),
+    axis.text.y = element_text(size = 22, margin = margin(b = 5)),
+    strip.text = element_text(size = 25, face = "bold", margin = margin(b = 15)),
+    legend.text = element_text(size = 22),
+    legend.title = element_text(size = 24, face = "bold"),
+    legend.position = "right",
+    panel.grid.major.y = element_line(color = "gray90")
+  ) +
+  guides(
+  color = guide_legend(override.aes = list(size = 5)),
+  shape = guide_legend(override.aes = list(size = 5)),
+  linetype = guide_legend(override.aes = list(linetype = "solid", size = 1.5))
+) +
+  labs(
+    title = "",
+    x = NULL,
+    y = NULL,
+    color = "AI Framing",
+    shape = "AI Framing"
+  ) +
+  scale_color_manual(values = c("Low AI" = "#1b9e77", "High AI" = "#d95f02"))
+
+# Save
+ggsave("H2_acp_estimates_manager.png", width = 20, height = 15, dpi = 300, bg = "white")
+ggsave("H2_acp_estimates_manager.pdf", width = 20, height = 15)
+
+```
+
+
+
+
+
+```{r}
+# Plot for ACPs
+# Analyst
+# Extract estimates and standard errors
+df_low_analyst <- data.frame(
+  attribute = names(results_acp_model_low_analyst$estimates),
+  estimate = results_acp_model_low_analyst$estimates,
+  se = sqrt(diag(results_acp_model_low_analyst$vcov)),
+  framing = "Low AI"
+)
+
+df_high_analyst <- data.frame(
+  attribute = names(results_acp_model_high_analyst$estimates),
+  estimate = results_acp_model_high_analyst$estimates,
+  se = sqrt(diag(results_acp_model_high_analyst$vcov)),
+  framing = "High AI"
+)
+
+
+# Combine both
+df_acp_analyst <- rbind(df_low_analyst, df_high_analyst)
+
+# Clean attribute names
+df_acp_analyst$label <- gsub(".*\\.", "", df_acp_analyst$attribute)
+df_acp_analyst$group <- gsub("\\..*", "", df_acp_analyst$attribute)
+
+# Order labels within each group
+df_acp_analyst <- df_acp_analyst %>%
+  group_by(group) %>%
+  mutate(label = factor(label, levels = rev(unique(label)))) %>%
+  ungroup()
+
+# Recode groups, catch unknowns as "Other"
+df_acp_analyst$group <- dplyr::recode(df_acp_analyst$group,
+  "agegroup" = "Age Group",
+  "educ" = "Education",
+  "ml" = "AI/ML Proficiency",
+  "prog" = "Programming/Data Analysis Skills",
+  "soft" = "Soft Skills",
+  "lead" = "Leadership/Decision Making",
+  .default = "Other"
+)
+
+# Drop unknowns if any (i.e., "Other")
+df_acp_analyst <- df_acp_analyst %>% filter(group != "Other")
+
+# Set facet order
+df_acp_analyst$group <- factor(df_acp_analyst$group, levels = c(
+  "Age Group",
+  "Education",
+  "AI/ML Proficiency",
+  "Programming/Data Analysis Skills",
+  "Soft Skills",
+  "Leadership/Decision Making"
+))
+
+
+# Plot
+ggplot(df_acp_analyst, aes(x = estimate, y = label, color = framing, shape = framing)) +
+  geom_point(position = position_dodge(width = 0.5), size = 5) +
+  geom_errorbar(aes(xmin = estimate - 1.96 * se, xmax = estimate + 1.96 * se),
+                position = position_dodge(width = 0.5),
+                width = 0.2,
+                size = 0.8,
+                show.legend = TRUE) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
+  facet_wrap(~ group, scales = "free_y", ncol = 2) +
+  #scale_y_discrete(expand = expansion(mult = c(0.1, 0.2))) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.title.position = "panel",
+    axis.text.x = element_text(size = 22),
+    axis.text.y = element_text(size = 22, margin = margin(b = 5)),
+    strip.text = element_text(size = 25, face = "bold", margin = margin(b = 15)),
+    legend.text = element_text(size = 22),
+    legend.title = element_text(size = 24, face = "bold"),
+    legend.position = "right",
+    panel.grid.major.y = element_line(color = "gray90")
+  ) +
+  guides(
+  color = guide_legend(override.aes = list(size = 5)),
+  shape = guide_legend(override.aes = list(size = 5)),
+  linetype = guide_legend(override.aes = list(linetype = "solid", size = 1.5))
+) +
+  labs(
+    title = "",
+    x = NULL,
+    y = NULL,
+    color = "AI Framing",
+    shape = "AI Framing"
+  ) +
+  scale_color_manual(values = c("Low AI" = "#1b9e77", "High AI" = "#d95f02"))
+
+# Save
+ggsave("H2_acp_estimates_analyst.png", width = 20, height = 15, dpi = 300, bg = "white")
+ggsave("H2_acp_estimates_analyst.pdf", width = 20, height = 15)
+
+```
+
+
+```{r}
+
+# Regression Tables
+
+# Filter and reshape the data
+H2_table_df_manager <- df_acp_manager %>%
+  mutate(
+    estimate = round(estimate, 3),
+    se = round(se, 3),
+    ci_lower = estimate - 1.96 * se, 3,
+    ci_upper = estimate + 1.96 * se, 3,
+    significance = ifelse(ci_lower > 0 | ci_upper < 0, "**", ""),
+    est_se = paste0(estimate, " | ", se, significance)
+  ) %>%
+  filter(label %in% c("ml_None", "ml_Basic", "ml_Intermediate",
+                      "ml_Advanced", "prog_None", "prog_Basic",
+                      "prog_Intermediate", "prog_Advanced")) %>%
+  select(label, framing, est_se) %>%
+  pivot_wider(names_from = framing, values_from = est_se)
+
+# Rename columns for clarity
+colnames(H2_table_df_manager) <- c("Attribute Level", "Low AI (Estimate | SE)", "High AI (Estimate | SE)")
+
+# Create gt table
+H2_table_manager <- H2_table_df_manager %>%
+  gt() %>%
+  #tab_header(
+  # title = "CACP Estimates with 95% Confidence Intervals" %>%
+  cols_align(align = "center")
+
+# Save to LaTeX
+gtsave(H2_table_manager, "H2_table_manager.tex")
+```
+
+
+```{r}
+
+# Filter and reshape the data
+H2_table_df_manager_full <- df_acp_manager %>%
+  mutate(
+    estimate = round(estimate, 3),
+    se = round(se, 3),
+    ci_lower = round(estimate - 1.96 * se, 3),
+    ci_upper = round(estimate + 1.96 * se, 3),
+    significance = ifelse(ci_lower > 0 | ci_upper < 0, "**", ""),
+    est_se = paste0(estimate, " | ", se, significance),
+    ci = paste0(
+      "[", round(estimate - 1.96 * se, 3), ", ",
+           round(estimate + 1.96 * se, 3), "]")) %>%
+  #filter(label %in% c("ml_None", "ml_Basic", "ml_Intermediate",
+   #                   "ml_Advanced", "prog_None", "prog_Basic",
+    #                  "prog_Intermediate", "prog_Advanced")) %>%
+  select(label, framing, est_se, ci) %>%
+  pivot_wider(names_from = framing, values_from = est_se)
+
+# Rename columns for clarity
+colnames(H2_table_df_manager_full) <- c("Attribute Level", "Low AI (Estimate | SE)", "High AI (Estimate | SE)", "Confidence Interval")
+
+# Create gt table
+H2_table_manager_full <- H2_table_df_manager_full %>%
+  gt() %>%
+  #tab_header(
+  # title = "CACP Estimates with 95% Confidence Intervals" %>%
+  cols_align(align = "center")
+
+# Save to LaTeX
+gtsave(H2_table_manager_full, "H2_table_manager_full.tex")
+
+##############################################################################
+
+# Filter and reshape the data
+H2_table_df_analyst_full <- df_acp_analyst %>%
+  mutate(
+    estimate = round(estimate, 3),
+    se = round(se, 3),
+    ci_lower = round(estimate - 1.96 * se, 3),
+    ci_upper = round(estimate + 1.96 * se, 3),
+    significance = ifelse(ci_lower > 0 | ci_upper < 0, "**", ""),
+    est_se = paste0(estimate, " | ", se, significance),
+    ci = paste0(
+      "[", round(estimate - 1.96 * se, 3), ", ",
+           round(estimate + 1.96 * se, 3), "]")) %>%
+  #filter(label %in% c("ml_None", "ml_Basic", "ml_Intermediate",
+   #                   "ml_Advanced", "prog_None", "prog_Basic",
+    #                  "prog_Intermediate", "prog_Advanced")) %>%
+  select(label, framing, est_se, ci) %>%
+  pivot_wider(names_from = framing, values_from = est_se)
+
+# Rename columns for clarity
+colnames(H2_table_df_analyst_full) <- c("Attribute Level", "Low AI (Estimate | SE)", "High AI (Estimate | SE)", "Confidence Interval")
+
+# Create gt table
+H2_table_analyst_full <- H2_table_df_analyst_full %>%
+  gt() %>%
+  #tab_header(
+  # title = "CACP Estimates with 95% Confidence Intervals" %>%
+  cols_align(align = "center")
+
+# Save to LaTeX
+gtsave(H2_table_analyst_full, "H2_table_analyst_full.tex")
+
+
+
+```
+
+
+```{r}
+
+# Filter and reshape the data
+H2_table_df_analyst <- df_acp_analyst %>%
+  mutate(
+    estimate = round(estimate, 3),
+    se = round(se, 3),
+    ci_lower = estimate - 1.96 * se, 3,
+    ci_upper = estimate + 1.96 * se, 3,
+    significance = ifelse(ci_lower > 0 | ci_upper < 0, "**", ""),
+    est_se = paste0(estimate, " | ", se, significance)
+  ) %>%
+  filter(label %in% c("ml_None", "ml_Basic", "ml_Intermediate",
+                      "ml_Advanced", "prog_None", "prog_Basic",
+                      "prog_Intermediate", "prog_Advanced")) %>%
+  select(label, framing, est_se) %>%
+  pivot_wider(names_from = framing, values_from = est_se)
+
+# Rename columns for clarity
+colnames(H2_table_df_analyst) <- c("Attribute Level", "Low AI (Estimate | SE)", "High AI (Estimate | SE)")
+
+# Create gt table
+H2_table_analyst <- H2_table_df_analyst %>%
+  gt() %>%
+  #tab_header(
+  # title = "CACP Estimates with 95% Confidence Intervals" %>%
+  cols_align(align = "center")
+
+# Save to LaTeX
+gtsave(H2_table_analyst, "H2_table_analyst.tex")
+
+
+```
+
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Manually input your estimates
+df <- data.frame(
+  job_role = rep(c("Manager", "Analyst"), each = 2),
+  ai_framing = rep(c("Low AI", "High AI"), 2),
+  ml_advanced = c(-0.283, -0.061, -0.278, -0.215),
+  prog_advanced = c(-0.353, -0.279, -0.301, -0.237)
+)
+
+# Convert to long format
+df_long <- df %>%
+  pivot_longer(cols = c(ml_advanced, prog_advanced),
+               names_to = "skill", values_to = "acp")
+
+# Skill labels
+skill_labels <- c(
+  ml_advanced = "ML: Advanced",
+  prog_advanced = "Programming: Advanced"
+)
+# Color palette for job roles
+role_colors <- c("Manager" = "#1b9e77", "Analyst" = "#d95f02")
+
+# Create the plot
+# In your ggplot:
+ggplot(df_long, aes(x = ai_framing, y = acp, 
+                    color = job_role, shape = job_role, group = job_role)) +
+  geom_point(size = 5, position = position_dodge(width = 0.5)) +
+  geom_line(position = position_dodge(width = 0.5), linewidth = 0.8) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
+  facet_wrap(~ skill, scales = "free_y", labeller = as_labeller(skill_labels)) +
+  labs(
+    title = "",
+    x = "AI Framing", y = "ACP Estimate",
+    color = "Job Role", shape = "Job Role"
+  ) +
+  scale_color_manual(values = role_colors) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(size = 24, face = "bold", hjust = 0),
+    axis.text = element_text(size = 16),
+    axis.title = element_text(size = 18),
+    legend.text = element_text(size = 16),
+    legend.title = element_text(size = 18, face = "bold"),
+    strip.text = element_text(size = 18, face = "bold"),
+    panel.grid.major.y = element_line(color = "gray90"),
+    panel.spacing = unit(2, "lines"),
+    legend.position = "right"
+  ) +
+  guides(
+    color = guide_legend(override.aes = list(size = 5)),
+    shape = guide_legend(override.aes = list(size = 5))
+  )
+
+ggsave("diff-in-diff-plot.png", width = 10, height = 7, dpi = 300, bg = "white")
+
+```
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Data
+df <- data.frame(
+  job_role = rep(c("Manager", "Analyst"), each = 2),
+  ai_framing = rep(c("Low AI", "High AI"), 2),
+  ml_advanced = c(-0.283, -0.061, -0.278, -0.215),
+  prog_advanced = c(-0.353, -0.279, -0.301, -0.237)
+)
+
+# Convert to long format
+df_long <- df %>%
+  pivot_longer(cols = c(ml_advanced, prog_advanced),
+               names_to = "skill", values_to = "acp")
+
+# Correct grouping: one line per skill × job role
+ggplot(df_long, aes(x = ai_framing, y = acp,
+                    group = interaction(skill, job_role),
+                    color = skill, shape = job_role)) +
+  geom_line(aes(linetype = job_role), linewidth = 1) +
+  geom_point(size = 3) +
+  scale_shape_manual(values = c("Analyst" = 16, "Manager" = 17)) +
+  scale_color_manual(values = c("ml_advanced" = "#F8766D", "prog_advanced" = "#00BFC4")) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Effect of AI Framing on ACPs by Skill and Job Role",
+       x = "AI Framing", y = "ACP Estimate",
+       color = "Skill", shape = "Job Role", linetype = "Job Role") +
+  theme_minimal(base_size = 13)
+
+```
+
+
+
+```{r}
+
+df_acp_manager$job_role <- "Manager"
+df_acp_analyst$job_role <- "Analyst"
+df_acp_combined <- rbind(df_acp_manager, df_acp_analyst)
+
+ggplot(df_acp_combined, aes(x = estimate, y = label, color = framing, shape = job_role)) +
+  geom_point(position = position_dodge(width = 0.6), size = 3) +
+  geom_errorbar(aes(xmin = estimate - 1.96 * se, xmax = estimate + 1.96 * se),
+                position = position_dodge(width = 0.6), width = 0.2, size = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
+  facet_wrap(~ group, scales = "free_y", ncol = 2) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Average Component Preferences by Job Role and AI Framing",
+    x = "ACP Estimate",
+    y = NULL,
+    color = "AI Framing",
+    shape = "Job Role"
+  ) +
+  scale_color_manual(values = c("Low AI" = "#1b9e77", "High AI" = "#d95f02")) +
+  scale_shape_manual(values = c("Manager" = 17, "Analyst" = 16)) +
+  theme(
+    strip.text = element_text(size = 14, face = "bold"),
+    legend.title = element_text(size = 13, face = "bold"),
+    legend.text = element_text(size = 12)
+  )
+
+
+ggsave("combined_plot.png", dpi = 300, width = 20, height = 15, bg = "white")
+```
+
+
+```{r}
+# Regional Effects
+
+df_us
+
+
+
+```
+
+```{r}
+results_acp_model_low
+
+```
+
+

@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
-detach("package:plyr", unload = TRUE)
+#detach("package:plyr", unload = TRUE)
 
 ```
 
@@ -28,11 +28,37 @@ combined_df <- read.csv("../01_data/02_processed_data/combined_df.csv")
 
 # Descriptives:
 
+sex_df <- combined_df |>
+  group_by(resp_sex) |>
+  summarise(count = n()) |>
+  mutate(percent = count*100/sum(count))
+
+edu_df <- combined_df |>
+  group_by(resp_edu) |>
+  summarise(count = n()) |>
+  mutate(percent = count*100/sum(count))
+
+ethni_df <- combined_df |>
+  group_by(Ethnicity.simplified) |>
+  summarise(count = n()) |>
+  mutate(percent = count*100/sum(count))
+
 country_df <- combined_df |>
-  group_by(Country.of.residence, resp_age, resp_sex, Region) |>
+  group_by(Country.of.residence, resp_age, resp_sex, resp_edu, Ethnicity.simplified, Region) |>
   summarise(count = n(), .groups = 'drop')
 
-country_plot_1 <- ggplot(country_df, aes(y = Country.of.residence, x = sort(count), fill = resp_sex)) +
+c_df <- combined_df |>
+  group_by(Country.of.residence) |>
+  summarise(count = n(), .groups = 'drop')
+write.csv(c_df, file = "c_df.csv")
+
+country_plot <- ggplot(country_df, aes(y = Country.of.residence, x = sort(count))) +
+  geom_bar(stat="identity", width=1, color = "black") +
+  coord_polar("x", start=0) +
+  theme_void()
+country_plot
+
+country_plot_1 <- ggplot(country_df, aes(y = Country.of.residence, x = sort(count), fill = Ethnicity.simplified)) +
   geom_bar(position="dodge", stat="identity") +
   scale_fill_brewer(palette = "GnBu") +
   theme_minimal()
@@ -43,6 +69,64 @@ country_plot_2 <- ggplot(country_df, aes(y = Country.of.residence, x = sort(coun
   scale_fill_brewer(palette = "GnBu") +
   theme_minimal()
 country_plot_2
+```
+
+
+```{r}
+country_df_sex <- combined_df |>
+  filter(resp_sex != "Prefer not to say") |>
+  group_by(resp_sex, resp_edu) |>
+  summarise(count = n()) |>
+  mutate(percent = count*100/sum(count))
+
+library(ggplot2)
+library(dplyr)
+library(forcats)
+
+# Step 1: Reorder education levels from low to high
+# (Adjust labels as per your dataset)
+country_df_sex <- country_df_sex %>%
+  mutate(resp_edu = factor(resp_edu, levels = c(
+    "High School or lower", "Bachelor's Degree", "Master's Degree", "PhD or higher"
+  )))
+
+# Step 2: Plot
+country_plot_3 <- ggplot(country_df_sex, aes(y = resp_edu, x = percent, fill = resp_sex)) +
+  geom_bar(position = position_dodge(width = 0.7), stat = "identity", width = 0.6) +
+  geom_text(aes(label = paste0(round(percent, 2), "%")),
+            position = position_dodge(width = 0.7),
+            hjust = -0.1, size = 6, color = "black") +
+  scale_fill_brewer(palette = "GnBu") +
+  scale_y_discrete(drop = FALSE) +
+  labs(
+    title = "",
+    x = "Percentage of Respondents",
+    y = "Highest Education Level",
+    fill = "Sex"
+  ) +
+    theme_minimal() +
+    theme(plot.title = element_text(size = 25, hjust = 0.5),
+          plot.subtitle = element_text(size = 20, hjust = 0.5),
+          plot.caption = element_text(size = 25, hjust = 0.5),
+          axis.title.x = element_text(size = 25),
+          axis.title.y = element_text(size = 25),
+          axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 25, hjust = 0.5),
+          panel.grid.minor.x = element_line(colour = "lightgray"),
+          panel.grid.major.x = element_blank(),
+          axis.line = element_blank(),
+         #plot.margin = margin(t = 80, r = 40, b = 20, l = 20)
+         legend.text = element_text(size = 25),
+         legend.title = element_text(size = 25),
+         legend.key.size = unit(2, "cm"),
+         legend.position = "bottom"
+         ) +
+          coord_cartesian(clip = "off")
+
+# Show the plot
+country_plot_3
+
+ggsave(country_plot_3, file = "ed_sex_plot.png", dpi = 300, width = 15, height = 12, bg = "white")
 
 ```
 
@@ -52,35 +136,95 @@ country_plot_2
 
 # Policy Preferences:
 
+# Label mapping
+question_labels <- c(
+  gov_reg = "The government should regulate the use of AI in the workplace to protect jobs and labour rights.",
+  gov_reskill = "There should be government reskilling programs for workers displaced by AI and automation.",
+  personal_data_safety_cause_for_concern = "The use of personal data by AI systems in the workplace is a cause for concern.",
+  ai_increases_prod_without_unemp = "AI adoption will enhance worker productivity without increasing unemployment.",
+  labour_welfare_policies_over_econ_growth = "Policies must prioritize labour welfare over the economic growth from AI adoption",
+  ai_driven_high_job_disp_in_the_future = "AI adoption will lead to widespread job displacement in the next 5-10 years.",
+  more_ai_research_and_development = "There should be more investment in AI research and development."
+)
+
+# Select Likert columns
 Likert_columns <- combined_df |>
   select(gov_reg:more_ai_research_and_development) |>
   names()
 
-# Convert columns to factors with explicit levels
-combined_df[, Likert_columns] <- lapply(combined_df[, Likert_columns], factor, 
+# Convert to factors
+combined_df[, Likert_columns] <- lapply(combined_df[, Likert_columns], factor,
                                  levels = c("Strongly agree",
                                             "Agree",
                                             "Neutral",
                                             "Disagree",
                                             "Strongly disagree"))
-#install.packages("likert")
-#install.packages("plyr")
+
+# Create a plotting dataframe with renamed columns
+plot_df <- combined_df[, Likert_columns]
+names(plot_df) <- question_labels[names(plot_df)]
+
+# Create likert object and plot
 library(likert)
-library(plyr)
-likert_data <- likert(items = combined_df[, Likert_columns],
-                      grouping = combined_df$policy_group)
-plot(likert_data) + 
-  ggtitle("Policy Preferences by Group")
-
-plot(likert_data, plot.percents = TRUE, 
-     colors = RColorBrewer::brewer.pal(5, "RdBu"))
-
-plot(likert_data, wrap = 60, legend.position = "bottom")
-
+likert_data <- likert(items = plot_df, grouping = combined_df$policy_group)
 
 #ggstats::gglikert()
 
+# Wrap rownames for axis labels
+plot_df_wrapped <- plot_df
+rownames(plot_df_wrapped) <- str_wrap(rownames(plot_df_wrapped), width = 30)
 
+gglikert(
+  plot_df,
+  labels_size = 6,
+  add_totals = FALSE
+) +
+  scale_fill_brewer(palette = "RdYlGn", direction = -1) +
+  ggtitle("") +
+  theme_minimal() +
+  theme(
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_blank(),
+    legend.position = "bottom",
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(size = 20),
+    legend.text = element_text(size = 18)
+  )
+
+ggsave("policy_plot.png", dpi = 300, width = 15, height = 10, bg = "white")
+
+```
+
+
+
+```{r}
+
+# Load required libraries
+library(wordcloud)
+library(tm)
+library(RColorBrewer)
+
+word_freq <- combined_df |>
+  group_by(resp_role) |>
+  summarise(count = n())
+
+ind_freq <- combined_df |>
+  separate(industry_type, sep = ",", into = c("a1", "a2", "a3", "a4", "a5", "a6", "a7"))
+
+a7_role <- ind_freq$a7[!is.na(ind_freq$a7)]
+a6_role <- ind_freq$a6[!is.na(ind_freq$a6)]
+a5_role <- ind_freq$a5[!is.na(ind_freq$a5)]
+a4_role <- ind_freq$a4[!is.na(ind_freq$a4)]
+a3_role <- ind_freq$a3[!is.na(ind_freq$a3)]
+a2_role <- ind_freq$a2[!is.na(ind_freq$a2)]
+a1_role <- table(ind_freq$a1[!is.na(ind_freq$a1)]
+)
+role <- a1_role + a2_role
+
+  group_by(industry_type) |>
+  summarise(count = n())
 
 ```
 

@@ -71,16 +71,16 @@ long_conjoint_df <- long_conjoint_df |>
          job_role = as.factor(job_role))
 
 # Get attribute levels and relevel
-levels(long_subset_df$age_group) = c("21-30", "31-40", "41-50", "51-60")
-levels(long_subset_df$educ) = c("Bachelor's", "Master's", "PhD")
-levels(long_subset_df$ml) = c("ml_None", "ml_Basic", 
+levels(long_conjoint_df$age_group) = c("21-30", "31-40", "41-50", "51-60")
+levels(long_conjoint_df$educ) = c("Bachelor's", "Master's", "PhD")
+levels(long_conjoint_df$ml) = c("ml_None", "ml_Basic", 
                                    "ml_Intermediate", "ml_Advanced")
-levels(long_subset_df$prog) = c("prog_None", "prog_Basic", 
+levels(long_conjoint_df$prog) = c("prog_None", "prog_Basic", 
                                    "prog_Intermediate", "prog_Advanced")
-levels(long_subset_df$soft) = c("soft_Low", "soft_Medium", "soft_High")
-levels(long_subset_df$lead) = c("lead_Low", "lead_Medium", "lead_High")
-levels(long_subset_df$ai_framing) = c("Low", "High")
-levels(long_subset_df$job_role) = c("Manager", "Analyst")
+levels(long_conjoint_df$soft) = c("soft_Low", "soft_Medium", "soft_High")
+levels(long_conjoint_df$lead) = c("lead_Low", "lead_Medium", "lead_High")
+levels(long_conjoint_df$ai_framing) = c("Low", "High")
+levels(long_conjoint_df$job_role) = c("Manager", "Analyst")
 
 
 ```
@@ -88,7 +88,7 @@ levels(long_subset_df$job_role) = c("Manager", "Analyst")
 ```{r}
 conjacp_data_cjoint <- conjacp.prepdata(
   chosen ~ age_group + educ + ml*prog + soft + lead,
-  data = long_subset_df,
+  data = long_conjoint_df,
   tasks = "task_fg",
   subgroups = "ai_framing",
   id = "RespID"
@@ -112,7 +112,7 @@ ind_se_c       <- NULL
 for (attribute in c("age_group", "educ", "ml", "prog", "soft", "lead")) {
     
     # Create data frame for model
-    data_model_c <- long_subset_df[, c(attribute, "chosen")]
+    data_model_c <- long_conjoint_df[, c(attribute, "chosen")]
     names(data_model_c)[-ncol(data_model_c)] <- paste0(names(data_model_c)[-ncol(data_model_c)], ".")
     
     # Estimate model
@@ -120,7 +120,7 @@ for (attribute in c("age_group", "educ", "ml", "prog", "soft", "lead")) {
     
     # Store estimates
     ind_estimate_c <- c(ind_estimate_c, coef(model_c)[-1])
-    vcov_c         <- vcovCluster(model_c, long_subset_df$RespID)
+    vcov_c         <- vcovCluster(model_c, long_conjoint_df$RespID)
     ind_se_c       <- c(ind_se_c, sqrt(diag(vcov_c))[-1])
     }
 
@@ -129,7 +129,7 @@ for (attribute in c("age_group", "educ", "ml", "prog", "soft", "lead")) {
 
 ```{r}
 results_cj <- cj(
-  data = long_subset_df,
+  data = long_conjoint_df,
   formula = chosen ~ age_group + educ + soft + lead + ml * prog,
   id = ~RespID
 )
@@ -231,7 +231,7 @@ hline <- data.frame(type = c("AMCE", "ACP"), yint = c(0, 0))
 
 # Plot graphs
 commplot_c <- ggplot(table_acpamce_c, aes(y = estimate, x = modality, group = type)) +
-  coord_flip(ylim = c(-.22, .2)) +
+  coord_flip(ylim = c(-.4, .4)) +
   geom_hline(data = hline, aes(yintercept = yint), size = .1, colour = "black") +
   geom_pointrange(aes(ymin = estimate - 1.96 * se, ymax = estimate + 1.96 * se,
                       color = type, shape = type, fill = type),
@@ -267,7 +267,7 @@ print(sqrt(diag(results_acp_model$vcov_c))) # Standard errors
 ## Variation within each job role:
 
 # Subset by job role
-manager_data <- subset(long_subset_df, job_role == "Manager")
+manager_data <- subset(long_conjoint_df, job_role == "Manager")
 
 # Estimate ACPs separately
 conjacp_data_manager <- conjacp.prepdata(
@@ -293,7 +293,7 @@ ind_se_manager       <- NULL
 for (attribute in c("age_group", "educ", "ml", "prog", "soft", "lead")) {
     
     # Create data frame for model
-    data_model_manager <- long_subset_df[, c(attribute, "chosen")]
+    data_model_manager <- long_conjoint_df[, c(attribute, "chosen")]
     names(data_model_manager)[-ncol(data_model_manager)] <- paste0(names(data_model_manager)[-ncol(data_model_manager)], ".")
     
     # Estimate model
@@ -301,7 +301,7 @@ for (attribute in c("age_group", "educ", "ml", "prog", "soft", "lead")) {
     
     # Store estimates
     ind_estimate_manager <- c(ind_estimate_manager, coef(model_manager)[-1])
-    vcov_manager         <- vcovCluster(model_manager, long_subset_df$RespID)
+    vcov_manager         <- vcovCluster(model_manager, long_conjoint_df$RespID)
     ind_se_manager       <- c(ind_se_manager, sqrt(diag(vcov_manager))[-1])
 }
 
@@ -402,7 +402,7 @@ print(commplot_manager)
 
 ```{r}
 
-analyst_data <- subset(long_subset_df, job_role == "Analyst")
+analyst_data <- subset(long_conjoint_df, job_role == "Analyst")
 
 conjacp_data_analyst <- conjacp.prepdata(
   chosen ~ age_group + educ + ml + prog + soft + lead,
@@ -426,7 +426,7 @@ ind_se_analyst       <- NULL
 for (attribute in c("age_group", "educ", "ml", "prog", "soft", "lead")) {
     
     # Create data frame for model
-    data_model_analyst <- long_subset_df[, c(attribute, "chosen")]
+    data_model_analyst <- long_conjoint_df[, c(attribute, "chosen")]
     names(data_model_analyst)[-ncol(data_model_analyst)] <- paste0(names(data_model_analyst)[-ncol(data_model_analyst)], ".")
     
     # Estimate model
@@ -434,7 +434,7 @@ for (attribute in c("age_group", "educ", "ml", "prog", "soft", "lead")) {
     
     # Store estimates
     ind_estimate_analyst <- c(ind_estimate_analyst, coef(model_analyst)[-1])
-    vcov_analyst         <- vcovCluster(model_analyst, long_subset_df$RespID)
+    vcov_analyst         <- vcovCluster(model_analyst, long_conjoint_df$RespID)
     ind_se_analyst       <- c(ind_se_analyst, sqrt(diag(vcov_analyst))[-1])
 }
 
@@ -528,33 +528,3 @@ print(commplot_analyst)
 
 ```
 
-```{r}
-
-# AI_framing: Low
-
-long_subset_df_low <- subset(long_subset_df, ai_framing == "Low")
-long_subset_df_high <- subset(long_subset_df, ai_framing == "High")
-
-conjacp_data_cjoint_low <- conjacp.prepdata(
-  chosen ~ age_group + educ + ml*prog + soft + lead,
-  data = long_subset_df_low,
-  tasks = "task_fg",
-  #subgroups = "ai_framing",
-  id = "RespID"
-)
-
-results_acp_model_low <- conjacp.estimation(conjacp_data_cjoint_low, estimand = "acp", adjust = FALSE)
-
-
-# AI_framing: High
-conjacp_data_cjoint_high <- conjacp.prepdata(
-  chosen ~ age_group + educ + ml*prog + soft + lead,
-  data = long_subset_df_high,
-  tasks = "task_fg",
-  #subgroups = "ai_framing",
-  id = "RespID"
-)
-
-results_acp_model_high <- conjacp.estimation(conjacp_data_cjoint_high, estimand = "acp", adjust = FALSE)
-
-```
