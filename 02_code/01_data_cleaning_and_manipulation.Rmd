@@ -6,48 +6,36 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+# Global options
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
 
-# Install required packages if not already installed
-# if (!require(tidyverse)) install.packages("tidyverse")
-# if (!require(janitor)) install.packages("janitor")
-# if (!require(stringr)) install.packages("stringr")
-# if (!require(cjoint)) install.packages("cjoint")
-# devtools::install_github("leeper/cregg")
+# Load required libraries
+library(tidyverse)   # For data manipulation and visualization
+library(stringr)     # For string manipulation
+library(readxl)      # For reading Excel files
+library(cjoint)      # For conjoint analysis
+library(broom)       # For tidying model outputs
+#library(janitor)     # For data cleaning utilities
+#library(cregg)       # For summarizing and visualizing conjoint results
 
-
-
-
-
-
-# Load packages
-library(tidyverse)
-library(janitor)
-library(stringr)
-library(readxl)
-library(cjoint)  
-library(cregg)
-library(broom)
 ```
 
 
 ```{r}
-# Step 1: Load the data
-# Using the dummy dataset
+# Load survey and demographic data
 dummy_data <- read_excel("../01_data/01_raw_data/test_data_1.xlsx")
 survey_df <- read_excel("../01_data/01_raw_data/final_data.xlsx")
 
 demo_test <- read.csv("../01_data/01_raw_data/demo_test.csv")
 demo_all <- read.csv("../01_data/01_raw_data/demo_all.csv")
 demo_df <- rbind(demo_test, demo_all)
-  
 
 ```
 
-### Part 1: Data Cleaning and Manipulation
+### Part 1: Survey Data Cleaning
 
 ```{r}
 cleaned_survey_df <- survey_df |>
@@ -95,82 +83,70 @@ cleaned_survey_df <- survey_df |>
                              .default = "pass")) |>
   filter(m_check == "pass") |>
   arrange(PROLIFIC_PID)
+```
 
 
+### Part 2: Demographic Data Cleaning
+
+```{r}
 cleaned_demo_df <- demo_df |>
-  mutate(Time.taken = as.numeric(Time.taken),
-         Time.taken_mins = Time.taken/60,
-         Region = ifelse(Country.of.residence == "United States", "US", "EU")) |>
-  filter(Hiring.experience == "Yes",
-         Status == "APPROVED") |>
-         #Completion.code == "C1LGE42N",
+  mutate(Time.taken = as.numeric(Time.taken),  # Convert to numeric from character string
+         Time.taken_mins = Time.taken/60,      # Convert time into minutes
+         Region = ifelse(Country.of.residence == "United States", "US", "EU")) |>  # Add a variable for region
+  filter(Hiring.experience == "Yes",           # Ensure that the sample only consists of employers
+         Status == "APPROVED") |>              # Only keep those submissions that were approved
+         #Completion.code == "C1LGE42N",       # Completion code and time taken are valid but reduntant filters
          #Time.taken_mins >= 2.4
-  filter(!duplicated(Participant.id)) |>
+  filter(!duplicated(Participant.id)) |>       # Remove the duplicate PIDs - respondents who took teh survey twice
+  # Remove the irrelevant/meta variables
   select(-c(Submission.id, Custom.study.tncs.accepted.at, Started.at, Completed.at, Reviewed.at, Archived.at, Time.taken, Completion.code, Total.approvals, Hiring.experience, Country.of.birth, Student.status, Employment.status)) |>
-  mutate(resp_age_num = Age) |>
+  rename(resp_age_num = Age) |>                # Rename the age variable to avoid conflict with survey data
   arrange(Participant.id)
   
-returned <- demo_df |>
-  filter(Status != "APPROVED")
 
-returned_list <- unique(returned$Participant.id)
+# Remove returned (disqualified) participants
+returned <- demo_df |>
+  filter(Status != "APPROVED")         
+
+returned_list <- unique(returned$Participant.id)  # Extract the list of unapproved submissions
 
 cleaned_survey_df <- cleaned_survey_df |>
-  filter(!(PROLIFIC_PID %in% returned_list))
+  filter(!(PROLIFIC_PID %in% returned_list))      # Use the above list to filter the unapproved submissions from the survey data
 ```
 
 
-```{r}
-#test <- cbind(sort(cleaned_demo_df$Participant.id), sort(clean$PROLIFIC_PID))
+###Part 3: Merge Survey and Demographic Data
 
+```{r}
+# Check the data set filtering
 # Get unique values in each column
-unique_col1 <- unique(cleaned_demo_df$Participant.id)
-unique_col2 <- unique(cleaned_survey_df$PROLIFIC_PID)
+unique_col_demo <- unique(cleaned_demo_df$Participant.id)
+unique_col_survey <- unique(cleaned_survey_df$PROLIFIC_PID)
 
-# Check if unique values in col1 match the unique values in col2
-if (setequal(unique_col1, unique_col2)) {
-  print("The unique values in col1 match the unique values in col2.")
+if (all(unique_col_survey %in% unique_col1)) {
+  print("All unique values in survey data are present in demographic data.")     # This is the expected output
 } else {
-  print("The unique values in col1 do not match the unique values in col2.")
+  print("Not all unique values in survey data are present in demographic data.")
 }
-
-if (all(unique_col2 %in% unique_col1)) {
-  print("All unique values in col1 are in col2.")
-} else {
-  print("Not all unique values in col1 are in col2.")
-}
-
-
-# Find values that are in col1 but not in col2
-col1_not_in_col2 <- setdiff(unique_col1, unique_col2)
-
-# Find values that are in col2 but not in col1
-col2_not_in_col1 <- setdiff(unique_col2, unique_col1)
-
-# Print the results
-cat("Values in col1 but not in col2:", col1_not_in_col2, "\n")
-cat("Values in col2 but not in col1:", col2_not_in_col1, "\n")
-
 ```
 
 ```{r}
-# Combine the survey and demographoc dataframes
-
 cleaned_demo_df <- cleaned_demo_df |>
-  rename(PROLIFIC_PID = Participant.id)
+  rename(PROLIFIC_PID = Participant.id)     # For consistent naming across both datasets
 
+# Merge the survey and demographic datasets
 combined_df <- left_join(cleaned_survey_df, cleaned_demo_df, by = "PROLIFIC_PID")
 
+# Save to file for further analysis
 write.csv(combined_df, file = "../01_data/02_processed_data/combined_df.csv")
-
-
 ```
 
 
-
+### Part 4: Split by Framing Condition
 
 ```{r}
-# Filter for each condition
+# Each condition filters based on framing and job role, and removes unrelated attributes
+
 # Low AI + Manager:
 
 low_ai_gen <- combined_df |>
@@ -228,8 +204,7 @@ high_ai_sp <- combined_df |>
 ```
 
 
-Create a function to convert all the 4 scenarios into long format data.
-
+### Part 5: Long Format Conversion Function
 
 ```{r}
 
@@ -373,6 +348,7 @@ reshape_df <- function(df, choice_prefix, traits_prefix, task_count = 5) {
 
 ```
 
+### Part 6: Validate Reshaping for Each Condition
 
 ```{r}
 
@@ -420,6 +396,11 @@ check_reshape_results <- function(original_df, long_df, condition_name) {
   )
 }
 
+```
+
+### Part 7: Apply Function and Combine All Conditions
+
+```{r}
 ##--------------------------------------------------------------------------##
 
 # Apply the improved reshaping and validation
@@ -466,14 +447,7 @@ write.csv(long_survey_df, file = "../01_data/02_processed_data/long_survey_df.cs
 
 ```
 
-
-```{r}
-#long_survey_df <- read.csv("../01_data/long_survey_df.csv")
-# Safely load the long-format data
-#long_survey_df <- readRDS("../01_data/long_survey_df.rds")
-
-```
-
+### Part 8: Prepare for Conjoint Analysis
 
 ```{r}
 # Prepare data for cjoint analysis
