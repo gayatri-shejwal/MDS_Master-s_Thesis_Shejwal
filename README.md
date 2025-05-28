@@ -30,5 +30,5 @@ The experiment employs a between-subjects 2×2 factorial design (AI Framing × J
 ## Contact
 
 **Author**: Gayatri Rajendra Shejwal  
-**Email**: g.shejwal@students.hertie-school.org
+**Email**: g.shejwal@students.hertie-school.org  
 **Affiliation**: Hertie School – Master of Data Science for Public Policy (2025)
