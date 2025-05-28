@@ -23,9 +23,9 @@ The experiment employs a between-subjects 2×2 factorial design (AI Framing × J
 
 ## Related Materials
 
-- OSF Pre-Registration: [[https://osf.io/yourlink](https://osf.io/hr6pg)]
-- Thesis Repository: (optional: Overleaf or PDF link)
-
+- OSF Pre-Registration: https://osf.io/hr6pg
+- Thesis Repository: Please reach out to the author for the full PDF.
+- 
 ## Contact
 
 **Author**: Gayatri Rajendra Shejwal  
