@@ -23,7 +23,7 @@ The experiment employs a between-subjects 2×2 factorial design (AI Framing × J
 
 ## Related Materials
 
-- OSF Pre-Registration: https://osf.io/hr6pg
+- OSF Pre-Registration: https://osf.io/cxsft
 - Thesis Repository: Please reach out to the author for the full PDF.
 - 
 ## Contact
