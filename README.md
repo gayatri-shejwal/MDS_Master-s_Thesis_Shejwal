@@ -9,7 +9,7 @@ This repository contains the data processing and analysis code for my Master's t
 
 - `01_data/`: Complete survey data, with both raw and processed datasets along with:
   - `ccc_survey.qsf`: QSF of the Qualtrics survey instrument
-  - `ccc_survey.docx: Word version of the Qualtrics survey instrument 
+  - `ccc_survey.docx`: Word version of the Qualtrics survey instrument 
 - `02_code/`: Complete R code used during the project
   - `01_data_cleaning_and_manipulation.Rmd`: Code for cleaning and reshaping raw Qualtrics survey exports into long format
   - `02_data_descriptives.Rmd`: Code for descriptive statistics of the collected data
