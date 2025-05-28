@@ -20,7 +20,7 @@ This repository contains the data processing and analysis code for my Master's t
 
 ## Method Summary
 
-The experiment employs a between-subjects 2×2 factorial design (AI Framing × Job Role), followed by five forced-choice conjoint tasks per respondent. Candidate attributes are randomized within each task, allowing estimation of causal effects of context and skill profiles on employer choice.
+The experiment employs a between-subjects 2×2 factorial design (AI Framing × Job Role), followed by five forced-choice conjoint tasks per respondent. Candidate attributes are randomized within each task, allowing estimation of causal effects of context and skill profiles on employer choice in the form of Average Component Preferences (ACPs) and Conditional Average Component Preferences (CACPs).
 
 ## Related Materials
 
@@ -30,5 +30,5 @@ The experiment employs a between-subjects 2×2 factorial design (AI Framing × J
 ## Contact
 
 **Author**: Gayatri Rajendra Shejwal  
-**Email**: g.shejwal@students.hery=tie-school.org
+**Email**: g.shejwal@students.hertie-school.org
 **Affiliation**: Hertie School – Master of Data Science for Public Policy (2025)
