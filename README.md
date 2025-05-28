@@ -5,7 +5,7 @@ Repository for the Master's Thesis Study conducted by Gayatri Rajendra Shejwal a
 
 This repository contains the data processing and analysis code for my Master's thesis in Data Science for Public Policy at the Hertie School (2025). The study investigates how organizational AI adoption influences employer preferences for candidate skills across generalist and specialist job roles.
 
-## 📄 Contents
+## Contents
 
 - `01_data/`: Complete survey data, with both raw and processed datasets along with:
   - `survey.pdf`: PDF version of the Qualtrics survey instrument
@@ -17,16 +17,16 @@ This repository contains the data processing and analysis code for my Master's t
 - `04_plots/`: Any plots, tables and visual outputs
 - `preanalysis_plan.pdf`: Pre-registered pre-analysis plan submitted to OSF
 
-## 🧪 Method Summary
+## Method Summary
 
 The experiment employs a between-subjects 2×2 factorial design (AI Framing × Job Role), followed by five forced-choice conjoint tasks per respondent. Candidate attributes are randomized within each task, allowing estimation of causal effects of context and skill profiles on employer choice.
 
-## 📎 Related Materials
+## Related Materials
 
 - OSF Pre-Registration: [[https://osf.io/yourlink](https://osf.io/yourlink)](https://osf.io/hr6pg)
 - Thesis Repository: (optional: Overleaf or PDF link)
 
-## 📬 Contact
+## Contact
 
 **Author**: Gayatri Rajendra Shejwal  
 **Email**: g.shejwal@students.hery=tie-school.org
